@@ -21,14 +21,14 @@ plugins {
 node {
     download = true
     // renovate: datasource=node-version depName=node
-    version = "24.22.2"
+    version = "26.13.0"
     // null suppresses the plugin's own repository registration; the Node.js
     // ivy repository lives in settings.gradle.kts (FAIL_ON_PROJECT_REPOS).
     distBaseUrl = null
     // Mirrors webmap/package.json "packageManager" (the pin pnpm itself reads
     // when invoked directly); this copy provisions the Gradle-managed install.
     // renovate: datasource=npm depName=pnpm
-    pnpmVersion = "12.16.0"
+    pnpmVersion = "12.16.1"
     nodeProjectDir = file("../webmap")
 }
 
