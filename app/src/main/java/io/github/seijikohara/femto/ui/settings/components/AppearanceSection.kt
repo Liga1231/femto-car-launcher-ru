@@ -316,8 +316,8 @@ private fun AccentRow(
     modifier =
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-    verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = SettingRowHorizontalInset, vertical = SettingRowVerticalInset),
+    verticalArrangement = Arrangement.spacedBy(6.dp),
 ) {
     Text(
         text = stringResource(R.string.settings_group_accent),

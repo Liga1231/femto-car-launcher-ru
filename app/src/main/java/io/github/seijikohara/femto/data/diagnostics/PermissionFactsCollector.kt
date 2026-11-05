@@ -102,12 +102,22 @@ internal class PermissionFactsCollector(
     private fun homeRoleFact(): DiagnosticFact {
         val held = context.holdsHomeRole()
         val defaultPackage =
-            context.packageManager
-                .resolveActivity(
-                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
-                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong()),
-                )?.activityInfo
-                ?.packageName
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager
+                    .resolveActivity(
+                        Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+                        PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong()),
+                    )?.activityInfo
+                    ?.packageName
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager
+                    .resolveActivity(
+                        Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+                        PackageManager.MATCH_DEFAULT_ONLY,
+                    )?.activityInfo
+                    ?.packageName
+            }
         val heldLabel = if (held) "held" else "not held"
         val value = defaultPackage?.let { "$heldLabel (default: $it)" } ?: heldLabel
         return DiagnosticFact("HOME role", FactValue.Status(value, FactHealth.INFO))

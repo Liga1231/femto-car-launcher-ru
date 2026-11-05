@@ -147,6 +147,7 @@ internal class SettingsViewModel(
                 themeMode = display.themeMode,
                 accentColor = display.accentColor,
                 uiScale = display.uiScale,
+                musicCardHeight = display.musicCardHeight,
                 speedUnit = display.speedUnit,
                 temperatureUnit = display.temperatureUnit,
                 clock = display.clock,
@@ -192,6 +193,9 @@ internal class SettingsViewModel(
                 googleMapsTraffic = display.googleMapsTraffic,
                 mapTileHost = display.mapTileHost,
                 mapCustomStyleUrl = display.mapCustomStyleUrl,
+                themeScheduleEnabled = display.themeScheduleEnabled,
+                themeScheduleLightHour = display.themeScheduleLightHour,
+                themeScheduleDarkHour = display.themeScheduleDarkHour,
                 latinFont = font.latin.displayNameOrNull,
                 cjkFont = font.cjk.displayNameOrNull,
                 locationQuality = location.quality,
@@ -308,6 +312,18 @@ internal class SettingsViewModel(
                     displayPreferences.setThemeMode(action.value)
                 }
 
+                is SettingsAction.SetThemeScheduleEnabled -> {
+                    displayPreferences.setThemeScheduleEnabled(action.value)
+                }
+
+                is SettingsAction.SetThemeScheduleLightHour -> {
+                    displayPreferences.setThemeScheduleLightHour(action.value)
+                }
+
+                is SettingsAction.SetThemeScheduleDarkHour -> {
+                    displayPreferences.setThemeScheduleDarkHour(action.value)
+                }
+
                 is SettingsAction.SetAccentColor -> {
                     displayPreferences.setAccentColor(action.value)
                 }
@@ -358,6 +374,10 @@ internal class SettingsViewModel(
 
                 is SettingsAction.SetUiScale -> {
                     displayPreferences.setUiScale(action.value)
+                }
+
+                is SettingsAction.SetMusicCardHeight -> {
+                    displayPreferences.setMusicCardHeight(action.value)
                 }
 
                 is SettingsAction.SetKeepScreenOn -> {
@@ -688,6 +708,7 @@ internal class SettingsViewModel(
                         }
 
                         SettingsSectionId.SCREEN,
+                        SettingsSectionId.SCENARIOS,
                         SettingsSectionId.UNITS,
                         SettingsSectionId.MAP,
                         -> {

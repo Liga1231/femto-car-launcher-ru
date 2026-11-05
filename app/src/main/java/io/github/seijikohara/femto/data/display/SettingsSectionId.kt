@@ -55,6 +55,14 @@ internal enum class SettingsSectionId(
             DisplayPreferences.MOTION_TIER_KEY,
         ),
     ),
+
+    SCENARIOS(
+        setOf(
+            DisplayPreferences.THEME_SCHEDULE_ENABLED_KEY,
+            DisplayPreferences.THEME_SCHEDULE_LIGHT_HOUR_KEY,
+            DisplayPreferences.THEME_SCHEDULE_DARK_HOUR_KEY,
+        ),
+    ),
     UNITS(
         setOf(
             DisplayPreferences.SPEED_KEY,
@@ -95,6 +103,7 @@ internal enum class SettingsSectionId(
             DisplayPreferences.MUSIC_SPECTRUM_KEY,
             DisplayPreferences.MUSIC_SHOW_ALBUM_KEY,
             DisplayPreferences.MUSIC_SHOW_ART_KEY,
+            DisplayPreferences.MUSIC_CARD_HEIGHT_KEY,
         ),
     ),
 

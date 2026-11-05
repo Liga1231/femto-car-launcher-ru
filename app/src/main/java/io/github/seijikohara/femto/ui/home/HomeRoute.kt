@@ -14,6 +14,7 @@ import io.github.seijikohara.femto.data.display.DockPosition
 import io.github.seijikohara.femto.data.display.DockWidth
 import io.github.seijikohara.femto.data.display.DriverSide
 import io.github.seijikohara.femto.data.display.MotionTier
+import io.github.seijikohara.femto.data.display.MusicCardHeight
 import io.github.seijikohara.femto.ui.home.components.DockConfig
 import io.github.seijikohara.femto.ui.home.components.GlassConfig
 import io.github.seijikohara.femto.ui.home.components.MapConfig
@@ -44,6 +45,7 @@ internal fun HomeRoute(
     calendarDateOnly: Boolean = false,
     musicShowAlbum: Boolean = true,
     musicShowArt: Boolean = true,
+    musicCardHeight: MusicCardHeight = MusicCardHeight.NORMAL,
     motionTier: MotionTier = MotionTier.STANDARD,
     sheetOpen: Boolean = false,
     fullscreen: Boolean = false,
@@ -91,6 +93,7 @@ internal fun HomeRoute(
         calendarDateOnly = calendarDateOnly,
         musicShowAlbum = musicShowAlbum,
         musicShowArt = musicShowArt,
+        musicCardHeight = musicCardHeight,
         spectrum = viewModel.audioSpectrum,
         motionTier = motionTier,
         online = online,

@@ -71,6 +71,8 @@ internal fun MapPanel(
     // the live page gets, so it can draw the self-marker where the WebView would.
     // See DashboardScreenshotTest.
     mapSurface: (@Composable (Location, MapConfig) -> Unit)? = null,
+    navigationRouteGeoJson: String? = null,
+    onSelectRoute: ((Int) -> Unit)? = null,
 ) = Surface(
     modifier = modifier,
     // Full-bleed: the map fills the dashboard to the screen edges, so it keeps
@@ -93,6 +95,8 @@ internal fun MapPanel(
                 onBearingChange = onBearingChange,
                 onOpenLicenses = onOpenLicenses,
                 attributionBottomInset = attributionBottomInset,
+                navigationRouteGeoJson = navigationRouteGeoJson,
+                onSelectRoute = onSelectRoute,
             )
         } else {
             ExposedMapRegion(mapConfig = mapConfig) {

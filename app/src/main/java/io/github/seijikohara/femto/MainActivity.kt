@@ -21,6 +21,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import io.github.seijikohara.femto.data.display.MapStyleSetting
+import kotlinx.coroutines.delay
+import java.time.LocalTime
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -134,6 +138,9 @@ class MainActivity : ComponentActivity() {
         }
         enableEmulatorMapRendering()
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         requestRuntimePermissions()
         observeBackgroundRanging()
         // Keep the cached fullscreen choice in sync so onWindowFocusChanged can
@@ -201,11 +208,34 @@ class MainActivity : ComponentActivity() {
             // let the splash lift. SideEffect so only an applied composition
             // publishes readiness; one-way, never reset.
             SideEffect { settingsReady = true }
+            var currentHour by remember { mutableIntStateOf(LocalTime.now().hour) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(10_000L)
+                    val hour = LocalTime.now().hour
+                    if (hour != currentHour) {
+                        currentHour = hour
+                    }
+                }
+            }
+
             val darkTheme =
-                when (settings.themeMode) {
-                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
-                    ThemeMode.LIGHT -> false
-                    ThemeMode.DARK -> true
+                if (settings.themeScheduleEnabled) {
+                    val lightHour = settings.themeScheduleLightHour
+                    val darkHour = settings.themeScheduleDarkHour
+                    val isDay =
+                        if (lightHour < darkHour) {
+                            currentHour in lightHour until darkHour
+                        } else {
+                            currentHour >= lightHour || currentHour < darkHour
+                        }
+                    !isDay
+                } else {
+                    when (settings.themeMode) {
+                        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                        ThemeMode.LIGHT -> false
+                        ThemeMode.DARK -> true
+                    }
                 }
             // Drive the system bars from the persisted fullscreen choice. This
             // fires only on a setting change; onWindowFocusChanged handles the
@@ -262,7 +292,12 @@ class MainActivity : ComponentActivity() {
                     temperatureUnit = settings.temperatureUnit.resolved(),
                     mapConfig =
                         MapConfig(
-                            style = settings.mapStyle,
+                            style =
+                                if (settings.themeScheduleEnabled) {
+                                    if (darkTheme) MapStyleSetting.DARK else MapStyleSetting.LIGHT
+                                } else {
+                                    settings.mapStyle
+                                },
                             schemeLight = settings.mapSchemeLight,
                             schemeDark = settings.mapSchemeDark,
                             tiltDeg = settings.mapTiltDeg,
@@ -288,6 +323,7 @@ class MainActivity : ComponentActivity() {
                         ),
                     calendarDateOnly = settings.calendarDateOnly,
                     musicShowAlbum = settings.musicShowAlbum,
+                    musicCardHeight = settings.musicCardHeight,
                     musicShowArt = settings.musicShowArt,
                     motionTier = settings.motionTier,
                     glassConfig =
@@ -526,8 +562,14 @@ class MainActivity : ComponentActivity() {
      */
     private fun launchSystemAssistant(): Boolean =
         assistantIntent(AssistantOption.ASSISTANT).let { intent ->
-            packageManager.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(0)) != null &&
-                tryStartActivity(intent)
+            val resolves =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(0)) != null
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.resolveActivity(intent, 0) != null
+                }
+            resolves && tryStartActivity(intent)
         }
 
     // Fire the intent matching the user's elected assistant option. No package is

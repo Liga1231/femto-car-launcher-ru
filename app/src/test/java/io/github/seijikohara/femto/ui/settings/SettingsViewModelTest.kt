@@ -17,6 +17,7 @@ import io.github.seijikohara.femto.data.display.SettingsSectionId
 import io.github.seijikohara.femto.data.display.SpeedUnitSetting
 import io.github.seijikohara.femto.data.display.ThemeMode
 import io.github.seijikohara.femto.data.display.UiScale
+import io.github.seijikohara.femto.data.dock.DEFAULT_NAV_HIDDEN
 import io.github.seijikohara.femto.data.dock.DockNavId
 import io.github.seijikohara.femto.data.dock.DockStatusId
 import io.github.seijikohara.femto.data.fonts.FontSlot
@@ -650,7 +651,7 @@ class SettingsViewModelTest {
             advanceUntilIdle()
 
             assertEquals(DockNavId.entries, dockStore.navOrder.first())
-            assertEquals(emptySet(), dockStore.navHidden.first())
+            assertEquals(DEFAULT_NAV_HIDDEN, dockStore.navHidden.first())
         }
 
     @Test

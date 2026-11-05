@@ -1,6 +1,7 @@
 package io.github.seijikohara.femto.ui.destination
 
 import io.github.seijikohara.femto.data.location.VehicleMotion
+import io.github.seijikohara.femto.data.navigation.AddressSuggestion
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.data.places.SavedPlace
 import io.github.seijikohara.femto.data.voice.VoiceState
@@ -17,6 +18,8 @@ internal data class DestinationUiState(
     val voice: VoiceState,
     val places: List<SavedPlace>,
     val motion: VehicleMotion,
+    val suggestions: List<AddressSuggestion> = emptyList(),
+    val isSearchingSuggestions: Boolean = false,
 ) {
     /**
      * True unless the verdict is [VehicleMotion.MOVING]. The gate fails open:
@@ -38,6 +41,8 @@ internal data class DestinationUiState(
                 voice = VoiceState.Idle,
                 places = emptyList(),
                 motion = VehicleMotion.UNKNOWN,
+                suggestions = emptyList(),
+                isSearchingSuggestions = false,
             )
     }
 }

@@ -36,6 +36,10 @@ import io.github.seijikohara.femto.data.music.AudioSpectrumRepository
 import io.github.seijikohara.femto.data.music.MusicCardState
 import io.github.seijikohara.femto.data.music.MusicCommand
 import io.github.seijikohara.femto.data.music.MusicSessionRepository
+import io.github.seijikohara.femto.data.navigation.DestinationGeocoder
+import io.github.seijikohara.femto.data.navigation.NavigationManager
+import io.github.seijikohara.femto.data.navigation.NavigationState
+import io.github.seijikohara.femto.data.navigation.OsrmRoutingApi
 import io.github.seijikohara.femto.data.system.SystemStatus
 import io.github.seijikohara.femto.data.system.SystemStatusRepository
 import io.github.seijikohara.femto.data.update.UpdateManifest
@@ -104,7 +108,20 @@ internal class HomeViewModel(
     private val resolveMusicSourceComponent: (String) -> ComponentName? = { null },
     private val spectrumEnabledFlow: Flow<Boolean> = flowOf(false),
     private val spectrumBandsFor: (Flow<Boolean>) -> Flow<FloatArray?> = { flowOf(null) },
+    private val navigationManager: NavigationManager? = null,
 ) : ViewModel() {
+    init {
+        if (navigationManager != null) {
+            viewModelScope.launch {
+                locationFlow.collect { location ->
+                    if (location != null) {
+                        navigationManager.onLocationChanged(location)
+                    }
+                }
+            }
+        }
+    }
+
     // The builds the update prompt has been answered about in this process. The
     // prompt closes on the answer itself, not on the store's write: a slow disk
     // would hold it open after the tap, and a full or damaged one would never
@@ -158,7 +175,8 @@ internal class HomeViewModel(
             calendarFlow.catchAsDefault(TAG, "calendar", HomeUiState.Initial.calendar),
             systemStatusFlow.catchAsDefault(TAG, "system status", HomeUiState.Initial.systemStatus),
             tripStateFlow.catchAsDefault(TAG, "trip state", HomeUiState.Initial.tripState),
-        ) { core, calendar, systemStatus, tripState ->
+            navigationManager?.state ?: flowOf(NavigationState.Idle),
+        ) { core, calendar, systemStatus, tripState, navState ->
             HomeUiState(
                 location = core.location,
                 address = core.address,
@@ -168,6 +186,7 @@ internal class HomeViewModel(
                 systemStatus = systemStatus,
                 tripState = tripState,
                 updateBadge = core.updateBadge,
+                navigationState = navState,
             )
         }.stateIn(viewModelScope, WhileUiSubscribed, HomeUiState.Initial)
 
@@ -276,7 +295,27 @@ internal class HomeViewModel(
             }
 
             is HomeAction.Navigate -> {
-                mutableEvents.tryEmit(HomeEvent.LaunchDestination(action.target, action.label))
+                if (navigationManager != null) {
+                    navigationManager.startNavigation(
+                        origin = uiState.value.location,
+                        target = action.target,
+                        label = action.label,
+                    )
+                } else {
+                    mutableEvents.tryEmit(HomeEvent.LaunchDestination(action.target, action.label))
+                }
+            }
+
+            HomeAction.StopNavigation -> {
+                navigationManager?.stopNavigation()
+            }
+
+            is HomeAction.SelectRoute -> {
+                navigationManager?.selectRoute(action.index)
+            }
+
+            HomeAction.ConfirmRoute -> {
+                navigationManager?.confirmRoute(origin = uiState.value.location)
             }
 
             is HomeAction.Shortcut -> {
@@ -380,6 +419,10 @@ internal class HomeViewModel(
 
             HomeAction.ResetDock -> {
                 mutableEvents.tryEmit(HomeEvent.ResetDock)
+            }
+
+            HomeAction.ToggleBrightness -> {
+                // Handled at the dashboard overlay layer
             }
         }
     }
@@ -491,6 +534,19 @@ internal class HomeViewModelFactory(
         val apps = AppsRepository(application)
         val displayPreferences = DisplayPreferences(application)
         val updatePreferences = UpdatePreferences(application)
+        val routingApi = OsrmRoutingApi(
+            client = httpClient,
+            userAgent = femtoUserAgent,
+        )
+        val destinationGeocoder = DestinationGeocoder(
+            context = application,
+            client = httpClient,
+            userAgent = femtoUserAgent,
+        )
+        val navigationManager = NavigationManager(
+            routingApi = routingApi,
+            destinationGeocoder = destinationGeocoder,
+        )
 
         @Suppress("UNCHECKED_CAST")
         return HomeViewModel(
@@ -518,6 +574,7 @@ internal class HomeViewModelFactory(
                     .map { it.musicSpectrum }
                     .distinctUntilChanged(),
             spectrumBandsFor = audioSpectrum::bandsFlow,
+            navigationManager = navigationManager,
         ) as T
     }
 }

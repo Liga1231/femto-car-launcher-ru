@@ -13,6 +13,7 @@ import io.github.seijikohara.femto.data.display.DockPosition
 import io.github.seijikohara.femto.data.display.DockWidth
 import io.github.seijikohara.femto.data.display.DriverSide
 import io.github.seijikohara.femto.data.display.MotionTier
+import io.github.seijikohara.femto.data.display.MusicCardHeight
 import io.github.seijikohara.femto.data.update.UpdateManifest
 import io.github.seijikohara.femto.ui.home.components.DashboardScaffold
 import io.github.seijikohara.femto.ui.home.components.DockConfig
@@ -47,6 +48,7 @@ internal fun HomeScreen(
     calendarDateOnly: Boolean = false,
     musicShowAlbum: Boolean = true,
     musicShowArt: Boolean = true,
+    musicCardHeight: MusicCardHeight = MusicCardHeight.NORMAL,
     spectrum: StateFlow<FloatArray?>? = null,
     motionTier: MotionTier = MotionTier.STANDARD,
     // The live map's connectivity reading (HomeViewModel.online).
@@ -86,6 +88,7 @@ internal fun HomeScreen(
         calendarDateOnly = calendarDateOnly,
         musicShowAlbum = musicShowAlbum,
         musicShowArt = musicShowArt,
+        musicCardHeight = musicCardHeight,
         spectrum = spectrum,
         motionTier = motionTier,
         online = online,

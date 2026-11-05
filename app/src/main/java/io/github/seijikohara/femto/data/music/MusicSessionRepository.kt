@@ -645,7 +645,9 @@ internal fun nowPlayingOf(
             packageName = packageName,
             playbackSpeed = playbackState?.playbackSpeed ?: 1f,
             positionUpdateTimeMs = playbackState?.lastPositionUpdateTime ?: 0L,
-            canSeek = (actions and PlaybackState.ACTION_SEEK_TO) != 0L,
+            canSeek =
+                (actions and PlaybackState.ACTION_SEEK_TO) != 0L ||
+                    metadata.getLong(MediaMetadata.METADATA_KEY_DURATION) > 0L,
             // Shuffle / repeat capability is a media3-controller fact (command
             // availability), not an action bit — supplied by the repository once
             // the async controller connects; false until then.

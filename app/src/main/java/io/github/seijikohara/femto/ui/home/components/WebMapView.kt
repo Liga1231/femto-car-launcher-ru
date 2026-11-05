@@ -149,12 +149,15 @@ internal fun WebMapView(
     onBearingChange: (Float) -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     attributionBottomInset: Dp = 0.dp,
+    navigationRouteGeoJson: String? = null,
+    onSelectRoute: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // The bridge object below is registered once per WebView instance and would
     // otherwise capture the first composition's lambdas forever.
     val currentOnFollowChange by rememberUpdatedState(onFollowChange)
     val currentOnBearingChange by rememberUpdatedState(onBearingChange)
+    val currentOnSelectRoute by rememberUpdatedState(onSelectRoute)
     val bearingHolder = remember { floatArrayOf(0f) }
     val isDark =
         when (mapConfig.style) {
@@ -714,6 +717,13 @@ internal fun WebMapView(
                                 // fetch): log only. The removed auto-downgrade
                                 // misfired on exactly such ambiguous signals —
                                 // never UI here.
+                                "routeSelect" -> {
+                                    val idx = detail.toIntOrNull() ?: 0
+                                    mainHandler.post {
+                                        currentOnSelectRoute?.invoke(idx)
+                                    }
+                                }
+
                                 "error" -> {
                                     Log.w(TAG, "LIVE map transient error: $detail")
                                 }
@@ -803,6 +813,16 @@ internal fun WebMapView(
                 "${mapConfig.leftSafeFraction}, '$markerColor')",
             null,
         )
+    }
+
+    LaunchedEffect(webView, pageReady.value, navigationRouteGeoJson) {
+        if (!pageReady.value) return@LaunchedEffect
+        if (!navigationRouteGeoJson.isNullOrBlank()) {
+            val escaped = navigationRouteGeoJson.replace("\\", "\\\\").replace("'", "\\'")
+            webView.evaluateJavascript("window.setRoute && setRoute('$escaped')", null)
+        } else {
+            webView.evaluateJavascript("window.clearRoute && clearRoute()", null)
+        }
     }
     // OSM backend: push the MapLibre style URL + optional accent recolor palette.
     // The Google Maps backend picks its style through setGoogleMapsOptions below
@@ -926,19 +946,9 @@ internal fun WebMapView(
                 factory = { webView },
             )
         }
-        // Native tile credit only for OSM on the default provider; Google Maps and
-        // a custom style render their own credits inside the WebView (see
-        // showsNativeAttribution).
-        if (showsNativeAttribution(mapConfig.backend, styleRef)) {
-            Attribution(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(bottom = attributionBottomInset),
-                showTerrainCredit = mapConfig.terrain,
-                onClick = onOpenLicenses,
-            )
-        }
+        // Attribution credit removed by request — no "© OpenStreetMap…" chip on the
+        // map. (Note: OSM/OpenMapTiles licences ask that attribution stay visible;
+        // this build hides it per the owner's choice.)
     }
 }
 

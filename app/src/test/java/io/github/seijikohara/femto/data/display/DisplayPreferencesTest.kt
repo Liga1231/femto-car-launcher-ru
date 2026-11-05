@@ -47,7 +47,7 @@ class DisplayPreferencesTest {
             store.setMusicShowArt(false)
             store.setCalendarDateOnly(true)
             store.setMotionTier(MotionTier.OFF)
-            store.setDriverSide(DriverSide.LEFT)
+            store.setDriverSide(DriverSide.RIGHT)
             assertNotEquals(DisplaySettings.Default, store.settings.first())
 
             // The two music-meta toggles persist and read back independently.
@@ -61,7 +61,7 @@ class DisplayPreferencesTest {
 
             store.settings.first().let { persisted ->
                 assertEquals(MotionTier.OFF, persisted.motionTier)
-                assertEquals(DriverSide.LEFT, persisted.driverSide)
+                assertEquals(DriverSide.RIGHT, persisted.driverSide)
             }
 
             // resetToDefaults() clears every key, so the read falls back to Default
@@ -69,7 +69,7 @@ class DisplayPreferencesTest {
             // already matches DisplaySettings.Default.
             store.resetToDefaults()
             assertEquals(DisplaySettings.Default, store.settings.first())
-            assertEquals(DriverSide.RIGHT, store.settings.first().driverSide)
+            assertEquals(DriverSide.LEFT, store.settings.first().driverSide)
         }
 
     @Test
@@ -283,6 +283,7 @@ class DisplayPreferencesTest {
                     musicSpectrum = DisplaySettings.Default.musicSpectrum,
                     musicShowAlbum = DisplaySettings.Default.musicShowAlbum,
                     musicShowArt = DisplaySettings.Default.musicShowArt,
+                    musicCardHeight = DisplaySettings.Default.musicCardHeight,
                 )
             assertEquals(expected, store.settings.first())
         }
@@ -328,6 +329,7 @@ class DisplayPreferencesTest {
         setThemeMode(ThemeMode.DARK)
         setAccentColor(AccentColor.TEAL)
         setUiScale(UiScale.LARGE)
+        setMusicCardHeight(MusicCardHeight.NORMAL)
         setSpeedUnit(SpeedUnitSetting.MILES)
         setTemperatureUnit(TemperatureUnitSetting.FAHRENHEIT)
         setClock(ClockSetting.TWENTY_FOUR_HOUR)
@@ -335,7 +337,7 @@ class DisplayPreferencesTest {
         setFullscreen(FullscreenSetting.OFF)
         setDockPosition(DockPosition.LEFT)
         setDockWidth(DockWidth.EXTENDED)
-        setDriverSide(DriverSide.LEFT)
+        setDriverSide(DriverSide.RIGHT)
         setMotionTier(MotionTier.OFF)
         setOrientation(OrientationSetting.PORTRAIT)
         setKeepScreenOn(false)
@@ -359,8 +361,8 @@ class DisplayPreferencesTest {
         setFontBaseSizeSp(20)
         setFontWeightStep(2)
         setFontLetterSpacingCentiEm(8)
-        setShowCalendar(false)
-        setShowWeather(false)
+        setShowCalendar(true)
+        setShowWeather(true)
         setShowMusic(false)
         setCalendarDateOnly(true)
         setMusicSpectrum(true)
@@ -373,6 +375,9 @@ class DisplayPreferencesTest {
         setGoogleMapsMapType(GoogleMapType.HYBRID)
         setGoogleMapsTraffic(true)
         setMapTileHost("https://tiles.example.test")
+        setThemeScheduleEnabled(true)
+        setThemeScheduleLightHour(8)
+        setThemeScheduleDarkHour(21)
         return settings.first()
     }
 }

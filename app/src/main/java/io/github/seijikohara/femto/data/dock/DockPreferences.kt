@@ -19,7 +19,7 @@ import kotlin.enums.enumEntries
  * [DashboardDock][io.github.seijikohara.femto.ui.home.components.DashboardDock]
  * maps each id to its icon / label / action.
  */
-internal enum class DockNavId { PHONE, APPS, MUSIC, NAVIGATION, BROWSER, ASSISTANT, SETTINGS }
+internal enum class DockNavId { PHONE, APPS, MUSIC, NAVIGATION, BROWSER, ASSISTANT, SETTINGS, BRIGHTNESS }
 
 /**
  * Stable identity for each dock status-cluster indicator, independent of its
@@ -56,15 +56,26 @@ internal inline fun <reified T : Enum<T>> resolveDockOrder(persisted: String?): 
     return kept + all.filterNot { it in kept }
 }
 
+internal val DEFAULT_NAV_HIDDEN: Set<DockNavId> =
+    setOf(
+        DockNavId.PHONE,
+        DockNavId.MUSIC,
+        DockNavId.BROWSER,
+        DockNavId.ASSISTANT,
+    )
+
 /**
  * Resolve a persisted name set into a [T] set, dropping any name that no
  * longer matches a [T] entry (a removed / renamed id).
  */
-internal inline fun <reified T : Enum<T>> resolveDockHidden(persisted: Set<String>?): Set<T> =
+internal inline fun <reified T : Enum<T>> resolveDockHidden(
+    persisted: Set<String>?,
+    default: Set<T> = emptySet(),
+): Set<T> =
     persisted
         ?.mapNotNull { name -> enumEntries<T>().firstOrNull { it.name == name } }
         ?.toSet()
-        ?: emptySet()
+        ?: default
 
 /**
  * Swap [id] one step toward [direction] (-1 = left/earlier, +1 = right/later)
@@ -164,7 +175,7 @@ internal class DockPreferences(
     override val navHidden: Flow<Set<DockNavId>> =
         context.dockDataStore.data
             .catchIoAsDefaults(TAG)
-            .map { prefs -> resolveDockHidden(prefs[NAV_HIDDEN_KEY]) }
+            .map { prefs -> resolveDockHidden(prefs[NAV_HIDDEN_KEY], DEFAULT_NAV_HIDDEN) }
 
     override val statusOrder: Flow<List<DockStatusId>> =
         context.dockDataStore.data
@@ -184,7 +195,7 @@ internal class DockPreferences(
 
     override suspend fun toggleNavHidden(id: DockNavId) {
         context.dockDataStore.editOrLog(TAG) { prefs ->
-            val current = resolveDockHidden<DockNavId>(prefs[NAV_HIDDEN_KEY])
+            val current = resolveDockHidden(prefs[NAV_HIDDEN_KEY], DEFAULT_NAV_HIDDEN)
             val hiding = id !in current
             // Never hide the last visible button — the dock must keep at least one
             // actionable id. The edit menu gates this too, but the invariant belongs
@@ -201,7 +212,7 @@ internal class DockPreferences(
     ) {
         context.dockDataStore.editOrLog(TAG) { prefs ->
             val order = resolveDockOrder<DockNavId>(prefs[NAV_ORDER_KEY])
-            val hidden = resolveDockHidden<DockNavId>(prefs[NAV_HIDDEN_KEY])
+            val hidden = resolveDockHidden(prefs[NAV_HIDDEN_KEY], DEFAULT_NAV_HIDDEN)
             prefs[NAV_ORDER_KEY] =
                 moveWithinVisible(order, hidden, id, direction).joinToString(ORDER_SEPARATOR) { it.name }
         }

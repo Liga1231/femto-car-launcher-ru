@@ -28,14 +28,21 @@ internal sealed interface HomeAction {
     data object OpenDestinations : HomeAction
 
     /**
-     * Hand [target] to the user's navigation app: the destination panel's
-     * Navigate (a typed or dictated query) or a tap on a saved place. [label]
-     * names the pin a saved point drops; a query ignores it.
+     * Start in-app turn-by-turn navigation to [target].
      */
     data class Navigate(
         val target: PlaceTarget,
         val label: String = "",
     ) : HomeAction
+
+    /** Stop and clear active in-app navigation. */
+    data object StopNavigation : HomeAction
+
+    data class SelectRoute(
+        val index: Int,
+    ) : HomeAction
+
+    data object ConfirmRoute : HomeAction
 
     data object ConnectMusicPlayer : HomeAction
 
@@ -75,6 +82,8 @@ internal sealed interface HomeAction {
     data object ToggleMapNorthUp : HomeAction
 
     data object OpenSettings : HomeAction
+
+    data object ToggleBrightness : HomeAction
 
     /**
      * The update prompt's "Later" (or its dismissal) for build [versionCode]:

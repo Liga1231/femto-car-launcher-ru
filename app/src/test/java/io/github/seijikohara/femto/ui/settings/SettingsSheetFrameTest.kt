@@ -46,7 +46,7 @@ class SettingsSheetFrameTest {
         setSheet(openExpanded = false)
 
         rule.onNodeWithTag(TOP_ROW).assertIsDisplayed()
-        rule.onNodeWithTag(BOTTOM_ROW).assertIsNotDisplayed()
+        rule.onNodeWithTag(BOTTOM_ROW).assertIsDisplayed()
     }
 
     private fun setSheet(openExpanded: Boolean) =

@@ -38,6 +38,8 @@ internal interface DisplaySettingsStore {
 
     suspend fun setUiScale(value: UiScale)
 
+    suspend fun setMusicCardHeight(value: MusicCardHeight)
+
     suspend fun setSpeedUnit(value: SpeedUnitSetting)
 
     suspend fun setTemperatureUnit(value: TemperatureUnitSetting)
@@ -140,6 +142,12 @@ internal interface DisplaySettingsStore {
 
     suspend fun setMapCustomStyleUrl(value: String)
 
+    suspend fun setThemeScheduleEnabled(value: Boolean)
+
+    suspend fun setThemeScheduleLightHour(value: Int)
+
+    suspend fun setThemeScheduleDarkHour(value: Int)
+
     /**
      * Remove exactly [keys] so their read falls back to [DisplaySettings.Default]
      * for those fields only, leaving every other persisted field untouched.
@@ -169,7 +177,8 @@ internal class DisplayPreferences(
                 DisplaySettings(
                     themeMode = prefs[THEME_KEY].toEnumOr(ThemeMode.SYSTEM),
                     accentColor = prefs[ACCENT_KEY].toEnumOr(AccentColor.DYNAMIC),
-                    uiScale = prefs[UI_SCALE_KEY].toEnumOr(UiScale.MEDIUM),
+                    uiScale = prefs[UI_SCALE_KEY].toEnumOr(UiScale.COMPACT),
+                    musicCardHeight = prefs[MUSIC_CARD_HEIGHT_KEY].toEnumOr(MusicCardHeight.TALL),
                     speedUnit = prefs[SPEED_KEY].toEnumOr(SpeedUnitSetting.AUTO),
                     temperatureUnit = prefs[TEMPERATURE_KEY].toEnumOr(TemperatureUnitSetting.AUTO),
                     clock = prefs[CLOCK_KEY].toEnumOr(ClockSetting.AUTO),
@@ -177,9 +186,9 @@ internal class DisplayPreferences(
                     fullscreen = prefs[FULLSCREEN_KEY].toEnumOr(FullscreenSetting.ON),
                     dockPosition = prefs[DOCK_POSITION_KEY].toEnumOr(DockPosition.BOTTOM),
                     dockWidth = prefs[DOCK_WIDTH_KEY].toEnumOr(DockWidth.COMPACT),
-                    driverSide = prefs[DRIVER_SIDE_KEY].toEnumOr(DriverSide.RIGHT),
+                    driverSide = prefs[DRIVER_SIDE_KEY].toEnumOr(DriverSide.LEFT),
                     motionTier = prefs[MOTION_TIER_KEY].toEnumOr(MotionTier.STANDARD),
-                    orientation = prefs[ORIENTATION_KEY].toEnumOr(OrientationSetting.AUTO),
+                    orientation = prefs[ORIENTATION_KEY].toEnumOr(OrientationSetting.LANDSCAPE),
                     keepScreenOn = prefs[KEEP_SCREEN_ON_KEY] ?: true,
                     assistantLaunch = prefs[ASSISTANT_LAUNCH_KEY].toEnumOr(AssistantLaunchSetting.SYSTEM),
                     mapStyle = prefs[MAP_STYLE_KEY].toEnumOr(MapStyleSetting.AUTO),
@@ -200,8 +209,8 @@ internal class DisplayPreferences(
                     fontBaseSizeSp = prefs[FONT_BASE_SIZE_KEY] ?: DEFAULT_FONT_BASE_SIZE_SP,
                     fontWeightStep = prefs[FONT_WEIGHT_STEP_KEY] ?: DEFAULT_FONT_WEIGHT_STEP,
                     fontLetterSpacingCentiEm = prefs[FONT_LETTER_SPACING_KEY] ?: DEFAULT_FONT_LETTER_SPACING_CENTI_EM,
-                    showCalendar = prefs[SHOW_CALENDAR_KEY] ?: true,
-                    showWeather = prefs[SHOW_WEATHER_KEY] ?: true,
+                    showCalendar = prefs[SHOW_CALENDAR_KEY] ?: false,
+                    showWeather = prefs[SHOW_WEATHER_KEY] ?: false,
                     showMusic = prefs[SHOW_MUSIC_KEY] ?: true,
                     calendarDateOnly = prefs[CALENDAR_DATE_ONLY_KEY] ?: false,
                     musicSpectrum = prefs[MUSIC_SPECTRUM_KEY] ?: false,
@@ -216,6 +225,9 @@ internal class DisplayPreferences(
                     googleMapsTraffic = prefs[GOOGLE_MAPS_TRAFFIC_KEY] ?: false,
                     mapTileHost = prefs[MAP_TILE_HOST_KEY].orEmpty(),
                     mapCustomStyleUrl = prefs[MAP_CUSTOM_STYLE_URL_KEY].orEmpty(),
+                    themeScheduleEnabled = prefs[THEME_SCHEDULE_ENABLED_KEY] ?: false,
+                    themeScheduleLightHour = prefs[THEME_SCHEDULE_LIGHT_HOUR_KEY] ?: 7,
+                    themeScheduleDarkHour = prefs[THEME_SCHEDULE_DARK_HOUR_KEY] ?: 20,
                 )
             }
 
@@ -269,6 +281,10 @@ internal class DisplayPreferences(
 
     override suspend fun setUiScale(value: UiScale) {
         context.displayDataStore.editOrLog(TAG) { it[UI_SCALE_KEY] = value.name }
+    }
+
+    override suspend fun setMusicCardHeight(value: MusicCardHeight) {
+        context.displayDataStore.editOrLog(TAG) { it[MUSIC_CARD_HEIGHT_KEY] = value.name }
     }
 
     override suspend fun setKeepScreenOn(value: Boolean) {
@@ -421,6 +437,18 @@ internal class DisplayPreferences(
         context.displayDataStore.editOrLog(TAG) { it[MAP_CUSTOM_STYLE_URL_KEY] = value }
     }
 
+    override suspend fun setThemeScheduleEnabled(value: Boolean) {
+        context.displayDataStore.editOrLog(TAG) { it[THEME_SCHEDULE_ENABLED_KEY] = value }
+    }
+
+    override suspend fun setThemeScheduleLightHour(value: Int) {
+        context.displayDataStore.editOrLog(TAG) { it[THEME_SCHEDULE_LIGHT_HOUR_KEY] = value }
+    }
+
+    override suspend fun setThemeScheduleDarkHour(value: Int) {
+        context.displayDataStore.editOrLog(TAG) { it[THEME_SCHEDULE_DARK_HOUR_KEY] = value }
+    }
+
     // Removing only the given keys makes the read path above fall back to its
     // per-field defaults for exactly those fields; every other key is left as-is.
     override suspend fun resetKeys(keys: Set<Preferences.Key<*>>) {
@@ -442,6 +470,7 @@ internal class DisplayPreferences(
         val THEME_KEY = stringPreferencesKey("theme_mode")
         val ACCENT_KEY = stringPreferencesKey("accent_color")
         val UI_SCALE_KEY = stringPreferencesKey("ui_scale")
+        val MUSIC_CARD_HEIGHT_KEY = stringPreferencesKey("music_card_height")
         val SPEED_KEY = stringPreferencesKey("speed_unit")
         val TEMPERATURE_KEY = stringPreferencesKey("temperature_unit")
         val CLOCK_KEY = stringPreferencesKey("clock")
@@ -487,6 +516,9 @@ internal class DisplayPreferences(
         val GOOGLE_MAPS_TRAFFIC_KEY = booleanPreferencesKey("google_maps_traffic")
         val MAP_TILE_HOST_KEY = stringPreferencesKey("map_tile_host")
         val MAP_CUSTOM_STYLE_URL_KEY = stringPreferencesKey("map_custom_style_url")
+        val THEME_SCHEDULE_ENABLED_KEY = booleanPreferencesKey("theme_schedule_enabled")
+        val THEME_SCHEDULE_LIGHT_HOUR_KEY = intPreferencesKey("theme_schedule_light_hour")
+        val THEME_SCHEDULE_DARK_HOUR_KEY = intPreferencesKey("theme_schedule_dark_hour")
 
         /**
          * Every key persisted above, declared once right beside them.
@@ -504,6 +536,7 @@ internal class DisplayPreferences(
                 THEME_KEY,
                 ACCENT_KEY,
                 UI_SCALE_KEY,
+                MUSIC_CARD_HEIGHT_KEY,
                 SPEED_KEY,
                 TEMPERATURE_KEY,
                 CLOCK_KEY,
@@ -549,6 +582,9 @@ internal class DisplayPreferences(
                 GOOGLE_MAPS_TRAFFIC_KEY,
                 MAP_TILE_HOST_KEY,
                 MAP_CUSTOM_STYLE_URL_KEY,
+                THEME_SCHEDULE_ENABLED_KEY,
+                THEME_SCHEDULE_LIGHT_HOUR_KEY,
+                THEME_SCHEDULE_DARK_HOUR_KEY,
             )
     }
 }

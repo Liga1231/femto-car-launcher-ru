@@ -6,23 +6,28 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -39,6 +44,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.lucide.Lucide
@@ -52,6 +58,7 @@ import dev.chrisbanes.haze.rememberHazeState
 import io.github.seijikohara.femto.R
 import io.github.seijikohara.femto.data.common.hasRecordAudioPermission
 import io.github.seijikohara.femto.data.location.VehicleMotion
+import io.github.seijikohara.femto.data.navigation.AddressSuggestion
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.data.places.SavedPlace
 import io.github.seijikohara.femto.data.voice.VoiceState
@@ -133,14 +140,25 @@ internal fun DestinationPanel(
             modifier = entryModifier,
         )
     }
-    val places: @Composable (Modifier) -> Unit = { placesModifier ->
-        SavedPlaces(
-            places = uiState.places,
-            typingAllowed = uiState.typingAllowed,
-            onNavigate = handOff,
-            onDelete = { onAction(DestinationAction.DeletePlace(it)) },
-            modifier = placesModifier,
-        )
+    val showSuggestions = uiState.query.trim().isNotEmpty() &&
+        (uiState.suggestions.isNotEmpty() || uiState.isSearchingSuggestions)
+    val rightPane: @Composable (Modifier) -> Unit = { paneModifier ->
+        if (showSuggestions) {
+            AddressSuggestions(
+                suggestions = uiState.suggestions,
+                isSearching = uiState.isSearchingSuggestions,
+                onNavigate = handOff,
+                modifier = paneModifier,
+            )
+        } else {
+            SavedPlaces(
+                places = uiState.places,
+                typingAllowed = uiState.typingAllowed,
+                onNavigate = handOff,
+                onDelete = { onAction(DestinationAction.DeletePlace(it)) },
+                modifier = paneModifier,
+            )
+        }
     }
     if (portrait) {
         Column(
@@ -148,7 +166,7 @@ internal fun DestinationPanel(
             verticalArrangement = Arrangement.spacedBy(FemtoDimens.ScreenPadding),
         ) {
             entry(Modifier.fillMaxWidth())
-            places(Modifier.fillMaxWidth().weight(1f))
+            rightPane(Modifier.fillMaxWidth().weight(1f))
         }
     } else {
         Row(
@@ -158,7 +176,7 @@ internal fun DestinationPanel(
             // The entry scrolls on its own: a short landscape panel (800x480)
             // cannot fit the field, the hint and both button rows at once.
             entry(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()))
-            places(Modifier.weight(1f).fillMaxHeight())
+            rightPane(Modifier.weight(1f).fillMaxHeight())
         }
     }
 }
@@ -402,6 +420,118 @@ private fun SavedPlaceRow(
             onClick = onDelete,
         )
     }
+}
+
+@Composable
+private fun AddressSuggestions(
+    suggestions: List<AddressSuggestion>,
+    isSearching: Boolean,
+    onNavigate: (target: PlaceTarget, label: String) -> Unit,
+    modifier: Modifier = Modifier,
+) = Column(
+    modifier = modifier,
+    verticalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "ПРЕДЛОЖЕНИЯ АДРЕСОВ",
+            style = MaterialTheme.typography.eyebrow(),
+            color = MaterialTheme.colorScheme.primary,
+        )
+        if (isSearching) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+
+    if (suggestions.isEmpty() && !isSearching) {
+        Text(
+            text = "Адреса не найдены",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(suggestions, key = { "${it.point.latitude},${it.point.longitude}-${it.title}" }) { suggestion ->
+                SuggestionRow(
+                    suggestion = suggestion,
+                    onClick = { onNavigate(suggestion.point, suggestion.title) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestionRow(
+    suggestion: AddressSuggestion,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) = Row(
+    modifier =
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    verticalAlignment = Alignment.CenterVertically,
+) {
+    Box(
+        modifier =
+            Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        FemtoIcon(
+            imageVector = Lucide.MapPin,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+
+    Spacer(modifier = Modifier.width(12.dp))
+
+    Column(modifier = Modifier.weight(1f)) {
+        Text(
+            text = suggestion.title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (suggestion.subtitle.isNotBlank()) {
+            Text(
+                text = suggestion.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.width(8.dp))
+
+    FemtoIcon(
+        imageVector = Lucide.Navigation,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.size(20.dp),
+    )
 }
 
 /**

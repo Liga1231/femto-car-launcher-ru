@@ -6,7 +6,14 @@
 // MapLibre 6 is ESM-only and publishes no default export, so the classes come in
 // by name. `MapLibreMap` is the library's own alias for its `Map` export, which
 // would otherwise shadow the global `Map`.
-import { AttributionControl, MapLibreMap, Marker, setWorkerUrl } from "maplibre-gl";
+import {
+    AttributionControl,
+    type FilterSpecification,
+    GeoJSONSource,
+    MapLibreMap,
+    Marker,
+    setWorkerUrl,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 // MapLibre 6 resolves its worker through `import.meta.url`, which a bundler
 // cannot honour, so every bundled consumer must hand it the URL. `?worker&url`
@@ -63,6 +70,24 @@ const STYLE_FADE_MAX_WAIT_MS = 4000;
 // indefinite blank page.
 const LOAD_FATAL_GRACE_MS = 10_000;
 
+function isGeoJsonData(data: unknown): data is Parameters<GeoJSONSource["setData"]>[0] {
+    return typeof data === "object" && data !== null;
+}
+
+interface PreviewGeoJson {
+    preview?: boolean;
+    features?: Array<{
+        geometry?: {
+            type?: string;
+            coordinates?: unknown;
+        };
+    }>;
+}
+
+function isPreviewGeoJson(data: unknown): data is PreviewGeoJson {
+    return typeof data === "object" && data !== null;
+}
+
 export function init(reporter: PageReporter, pending: PendingBridgeCalls): void {
     const { log, report, reportErrorThrottled } = reporter;
 
@@ -98,6 +123,9 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
         // toggle.
         buildingColor: "",
         styleFadeGen: 0,
+        currentRouteGeoJson: null as string | null,
+        leftSafe: 0,
+        rightSafe: 0,
     };
 
     try {
@@ -132,12 +160,16 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
         liveMap.on("load", () => {
             styleWatchdog.onStyleLoaded();
             log("load");
+            if (state.currentRouteGeoJson) applyRoute(state.currentRouteGeoJson);
         });
         // `load` fires once per map; every later style swap reports through
         // `style.load`. Tracking both keeps the style watchdog honest across
         // swaps, so a swap to a style that never arrives (a mistyped custom
         // URL) is judged the way a cold start is — see setStyleUrl.
-        liveMap.on("style.load", () => styleWatchdog.onStyleLoaded());
+        liveMap.on("style.load", () => {
+            styleWatchdog.onStyleLoaded();
+            if (state.currentRouteGeoJson) applyRoute(state.currentRouteGeoJson);
+        });
 
         // WebGL context loss is usually TRANSIENT on mobile / WebView GPUs,
         // and MapLibre auto-recovers: it preventDefault()s the loss, saves
@@ -285,7 +317,33 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
                     .addTo(liveMap),
         });
 
-        window.updateCamera = engine.updateCamera;
+        window.updateCamera = (
+            lat,
+            lon,
+            bearing,
+            zoom,
+            tilt,
+            markerPos,
+            bottomSafe,
+            rightSafe,
+            leftSafe,
+            markerColor,
+        ) => {
+            state.leftSafe = leftSafe;
+            state.rightSafe = rightSafe;
+            engine.updateCamera(
+                lat,
+                lon,
+                bearing,
+                zoom,
+                tilt,
+                markerPos,
+                bottomSafe,
+                rightSafe,
+                leftSafe,
+                markerColor,
+            );
+        };
         window.setFollow = engine.setFollow;
         window.setNorthUp = engine.setNorthUp;
         window.onHostResume = engine.onHostResume;
@@ -359,6 +417,282 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
             applyStyleWithFade();
         };
 
+        const ROUTE_SOURCE_ID = "femto-route-source";
+        const ROUTE_ALT_CASING_LAYER_ID = "femto-route-alt-casing";
+        const ROUTE_ALT_LINE_LAYER_ID = "femto-route-alt-line";
+        const ROUTE_CASING_LAYER_ID = "femto-route-casing";
+        const ROUTE_LINE_LAYER_ID = "femto-route-line";
+        const DEST_LAYER_ID = "femto-dest-point";
+
+        function clearRouteLayers(): void {
+            if (liveMap.getLayer(DEST_LAYER_ID)) liveMap.removeLayer(DEST_LAYER_ID);
+            if (liveMap.getLayer(ROUTE_LINE_LAYER_ID)) liveMap.removeLayer(ROUTE_LINE_LAYER_ID);
+            if (liveMap.getLayer(ROUTE_CASING_LAYER_ID)) liveMap.removeLayer(ROUTE_CASING_LAYER_ID);
+            if (liveMap.getLayer(ROUTE_ALT_LINE_LAYER_ID))
+                liveMap.removeLayer(ROUTE_ALT_LINE_LAYER_ID);
+            if (liveMap.getLayer(ROUTE_ALT_CASING_LAYER_ID))
+                liveMap.removeLayer(ROUTE_ALT_CASING_LAYER_ID);
+            if (liveMap.getSource(ROUTE_SOURCE_ID)) liveMap.removeSource(ROUTE_SOURCE_ID);
+        }
+
+        function fitRouteBounds(parsed: unknown): void {
+            if (!isPreviewGeoJson(parsed) || !parsed.preview) {
+                return;
+            }
+            const bounds = {
+                minLng: 180,
+                maxLng: -180,
+                minLat: 90,
+                maxLat: -90,
+                found: false,
+            };
+            const features = Array.isArray(parsed.features) ? parsed.features : [];
+            features.forEach((f) => {
+                const geom = f?.geometry;
+                if (geom && geom.type === "LineString" && Array.isArray(geom.coordinates)) {
+                    geom.coordinates.forEach((pt: unknown) => {
+                        if (Array.isArray(pt) && pt.length >= 2) {
+                            const lng = Number(pt[0]);
+                            const lat = Number(pt[1]);
+                            if (!Number.isNaN(lng) && !Number.isNaN(lat)) {
+                                if (lng < bounds.minLng) bounds.minLng = lng;
+                                if (lng > bounds.maxLng) bounds.maxLng = lng;
+                                if (lat < bounds.minLat) bounds.minLat = lat;
+                                if (lat > bounds.maxLat) bounds.maxLat = lat;
+                                bounds.found = true;
+                            }
+                        }
+                    });
+                }
+            });
+            if (bounds.found) {
+                const containerW = liveMap.getContainer().clientWidth || 800;
+                const padLeft =
+                    state.leftSafe > 0 ? Math.round(containerW * state.leftSafe) + 40 : 60;
+                const padRight =
+                    state.rightSafe > 0 ? Math.round(containerW * state.rightSafe) + 40 : 60;
+                liveMap.fitBounds(
+                    [
+                        [bounds.minLng, bounds.minLat],
+                        [bounds.maxLng, bounds.maxLat],
+                    ],
+                    {
+                        padding: { top: 90, bottom: 80, left: padLeft, right: padRight },
+                        duration: 800,
+                        maxZoom: 16,
+                    },
+                );
+            }
+        }
+
+        function applyRoute(geojsonStr: string | null): void {
+            if (!liveMap.isStyleLoaded()) return;
+            if (!geojsonStr) {
+                clearRouteLayers();
+                return;
+            }
+            try {
+                const parsed: unknown = JSON.parse(geojsonStr);
+                if (!isGeoJsonData(parsed)) return;
+
+                const isPreview = isPreviewGeoJson(parsed) && Boolean(parsed.preview);
+                const altFilter: FilterSpecification = isPreview
+                    ? [
+                          "all",
+                          ["==", ["geometry-type"], "LineString"],
+                          ["==", ["get", "selected"], false],
+                      ]
+                    : ["==", ["geometry-type"], "Polygon"];
+                const activeFilter: FilterSpecification = isPreview
+                    ? [
+                          "all",
+                          ["==", ["geometry-type"], "LineString"],
+                          ["!=", ["get", "selected"], false],
+                      ]
+                    : ["==", ["geometry-type"], "LineString"];
+
+                const updateFilters = () => {
+                    if (liveMap.getLayer(ROUTE_ALT_CASING_LAYER_ID)) {
+                        liveMap.setFilter(ROUTE_ALT_CASING_LAYER_ID, altFilter);
+                    }
+                    if (liveMap.getLayer(ROUTE_ALT_LINE_LAYER_ID)) {
+                        liveMap.setFilter(ROUTE_ALT_LINE_LAYER_ID, altFilter);
+                    }
+                    if (liveMap.getLayer(ROUTE_CASING_LAYER_ID)) {
+                        liveMap.setFilter(ROUTE_CASING_LAYER_ID, activeFilter);
+                    }
+                    if (liveMap.getLayer(ROUTE_LINE_LAYER_ID)) {
+                        liveMap.setFilter(ROUTE_LINE_LAYER_ID, activeFilter);
+                    }
+                };
+
+                const existingSource = liveMap.getSource(ROUTE_SOURCE_ID);
+                if (existingSource instanceof GeoJSONSource) {
+                    void existingSource.setData(parsed);
+                    updateFilters();
+                } else {
+                    clearRouteLayers();
+                    liveMap.addSource(ROUTE_SOURCE_ID, {
+                        type: "geojson",
+                        data: parsed,
+                    });
+                    liveMap.addLayer({
+                        id: ROUTE_ALT_CASING_LAYER_ID,
+                        type: "line",
+                        source: ROUTE_SOURCE_ID,
+                        filter: altFilter,
+                        layout: {
+                            "line-cap": "round",
+                            "line-join": "round",
+                        },
+                        paint: {
+                            "line-color": "#334155",
+                            "line-width": [
+                                "interpolate",
+                                ["linear"],
+                                ["zoom"],
+                                10,
+                                5,
+                                15,
+                                8,
+                                18,
+                                11,
+                            ],
+                            "line-opacity": 0.6,
+                        },
+                    });
+                    liveMap.addLayer({
+                        id: ROUTE_ALT_LINE_LAYER_ID,
+                        type: "line",
+                        source: ROUTE_SOURCE_ID,
+                        filter: altFilter,
+                        layout: {
+                            "line-cap": "round",
+                            "line-join": "round",
+                        },
+                        paint: {
+                            "line-color": "#64748B",
+                            "line-width": [
+                                "interpolate",
+                                ["linear"],
+                                ["zoom"],
+                                10,
+                                3,
+                                15,
+                                5,
+                                18,
+                                8,
+                            ],
+                            "line-opacity": 0.75,
+                        },
+                    });
+                    liveMap.addLayer({
+                        id: ROUTE_CASING_LAYER_ID,
+                        type: "line",
+                        source: ROUTE_SOURCE_ID,
+                        filter: activeFilter,
+                        layout: {
+                            "line-cap": "round",
+                            "line-join": "round",
+                        },
+                        paint: {
+                            "line-color": "#172554",
+                            "line-width": [
+                                "interpolate",
+                                ["linear"],
+                                ["zoom"],
+                                10,
+                                8,
+                                15,
+                                12,
+                                18,
+                                16,
+                            ],
+                            "line-opacity": 0.85,
+                        },
+                    });
+                    liveMap.addLayer({
+                        id: ROUTE_LINE_LAYER_ID,
+                        type: "line",
+                        source: ROUTE_SOURCE_ID,
+                        filter: activeFilter,
+                        layout: {
+                            "line-cap": "round",
+                            "line-join": "round",
+                        },
+                        paint: {
+                            "line-color": "#3B82F6",
+                            "line-width": [
+                                "interpolate",
+                                ["linear"],
+                                ["zoom"],
+                                10,
+                                5,
+                                15,
+                                8,
+                                18,
+                                12,
+                            ],
+                            "line-opacity": 1.0,
+                        },
+                    });
+                    liveMap.addLayer({
+                        id: DEST_LAYER_ID,
+                        type: "circle",
+                        source: ROUTE_SOURCE_ID,
+                        filter: ["==", ["geometry-type"], "Point"],
+                        paint: {
+                            "circle-radius": [
+                                "interpolate",
+                                ["linear"],
+                                ["zoom"],
+                                10,
+                                6,
+                                15,
+                                10,
+                                18,
+                                14,
+                            ],
+                            "circle-color": "#EF4444",
+                            "circle-stroke-width": 3,
+                            "circle-stroke-color": "#FFFFFF",
+                        },
+                    });
+
+                    liveMap.on("click", ROUTE_ALT_LINE_LAYER_ID, (e) => {
+                        const feats = e.features;
+                        if (!feats || feats.length === 0) return;
+                        const first = feats[0];
+                        const idx = first.properties?.routeIndex;
+                        if (idx !== undefined && idx !== null) {
+                            reporter.report("routeSelect", String(idx));
+                        }
+                    });
+                    liveMap.on("click", ROUTE_LINE_LAYER_ID, (e) => {
+                        const feats = e.features;
+                        if (!feats || feats.length === 0) return;
+                        const first = feats[0];
+                        const idx = first.properties?.routeIndex;
+                        if (idx !== undefined && idx !== null) {
+                            reporter.report("routeSelect", String(idx));
+                        }
+                    });
+                }
+                fitRouteBounds(parsed);
+            } catch (e) {
+                log(`route error: ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
+
+        window.setRoute = (geojson) => {
+            state.currentRouteGeoJson = geojson;
+            applyRoute(geojson);
+        };
+        window.clearRoute = () => {
+            state.currentRouteGeoJson = null;
+            clearRouteLayers();
+        };
+
         // Replay any bridge calls the boot stubs recorded before this module
         // loaded. Order mirrors the host's push sequence.
         if (pending.setStyleUrl) window.setStyleUrl(...pending.setStyleUrl);
@@ -366,6 +700,7 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
         if (pending.setNorthUp != null) window.setNorthUp(pending.setNorthUp);
         if (pending.setFollow != null) window.setFollow(pending.setFollow);
         if (pending.updateCamera) window.updateCamera(...pending.updateCamera);
+        if (pending.setRoute !== undefined) window.setRoute(pending.setRoute);
         if (pending.onHostResume) window.onHostResume();
     } catch (e) {
         log(`exception:${e instanceof Error ? e.message : String(e)}`);
