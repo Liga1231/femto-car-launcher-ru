@@ -1269,6 +1269,7 @@ private fun DashboardOverlays(
                 systemStatus = uiState.systemStatus,
                 onClose = onCloseQuickSettings,
                 onAction = onAction,
+                isMoving = !uiState.tripState.stationary,
                 hazeState = hazeState,
                 glassConfig = glassConfig,
                 modifier = Modifier.fillMaxSize(),

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -26,12 +27,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -91,6 +94,7 @@ internal fun QuickSettingsPanel(
     systemStatus: SystemStatus,
     onClose: () -> Unit,
     onAction: (HomeAction) -> Unit,
+    isMoving: Boolean = false,
     modifier: Modifier = Modifier,
     hazeState: HazeState = rememberHazeState(),
     glassConfig: GlassConfig = GlassConfig(),
@@ -98,6 +102,9 @@ internal fun QuickSettingsPanel(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val isDark = LocalFemtoDarkTheme.current
+
+    var showRebootConfirm by remember { mutableStateOf(false) }
+    var showPowerOffConfirm by remember { mutableStateOf(false) }
 
     // Wi-Fi state
     val wifiManager = remember { context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager }
@@ -474,9 +481,12 @@ internal fun QuickSettingsPanel(
                 QuickSystemButton(
                     icon = Lucide.RefreshCw,
                     label = "Перезагрузка",
+                    enabled = !isMoving,
                     onClick = {
-                        coroutineScope.launch {
-                            RootShell.reboot()
+                        if (isMoving) {
+                            Toast.makeText(context, "Недоступно во время движения", Toast.LENGTH_SHORT).show()
+                        } else {
+                            showRebootConfirm = true
                         }
                     },
                     modifier = Modifier.weight(1f),
@@ -484,15 +494,68 @@ internal fun QuickSettingsPanel(
                 QuickSystemButton(
                     icon = Lucide.Power,
                     label = "Выключение",
+                    enabled = !isMoving,
                     onClick = {
-                        coroutineScope.launch {
-                            RootShell.powerOff()
+                        if (isMoving) {
+                            Toast.makeText(context, "Недоступно во время движения", Toast.LENGTH_SHORT).show()
+                        } else {
+                            showPowerOffConfirm = true
                         }
                     },
                     modifier = Modifier.weight(1f),
                 )
             }
         }
+    }
+
+    if (showRebootConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRebootConfirm = false },
+            title = { Text(text = "Перезагрузка устройства") },
+            text = { Text(text = "Вы действительно хотите перезагрузить головное устройство?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRebootConfirm = false
+                        coroutineScope.launch {
+                            RootShell.reboot()
+                        }
+                    },
+                ) {
+                    Text(text = "Перезагрузить", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRebootConfirm = false }) {
+                    Text(text = "Отмена")
+                }
+            },
+        )
+    }
+
+    if (showPowerOffConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPowerOffConfirm = false },
+            title = { Text(text = "Выключение устройства") },
+            text = { Text(text = "Вы действительно хотите выключить головное устройство?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPowerOffConfirm = false
+                        coroutineScope.launch {
+                            RootShell.powerOff()
+                        }
+                    },
+                ) {
+                    Text(text = "Выключить", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPowerOffConfirm = false }) {
+                    Text(text = "Отмена")
+                }
+            },
+        )
     }
 }
 
@@ -599,17 +662,21 @@ private fun QuickSystemButton(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val isDark = LocalFemtoDarkTheme.current
+    val baseColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceContainerHigh
+    val contentAlpha = if (enabled) 1.0f else 0.38f
+
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        color = if (enabled) baseColor else baseColor.copy(alpha = 0.2f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (enabled) 0.35f else 0.15f)),
         modifier =
             modifier
                 .height(48.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .clickable(onClick = onClick),
+                .clickable(enabled = enabled, onClick = onClick),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp),
@@ -619,14 +686,14 @@ private fun QuickSystemButton(
             FemtoIcon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
                 modifier = Modifier.size(18.dp),
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
                 maxLines = 1,
             )
         }
