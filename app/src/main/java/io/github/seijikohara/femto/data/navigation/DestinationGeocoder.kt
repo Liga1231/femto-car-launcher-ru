@@ -295,16 +295,16 @@ internal class DestinationGeocoder(
                 Log.w(TAG, "Nominatim suggestion search failed", it)
             }
 
-            val filtered = results
+            val localResults = runCatching {
+                OfflineNavigationEngine.searchPlaces(query, maxResults)
+            }.getOrDefault(emptyList())
+
+            val combined = (localResults + results)
                 .filter { isRussianLocation(it.title, it.subtitle, it.point.latitude, it.point.longitude) }
                 .distinctBy { "${it.title.lowercase(Locale.ROOT)}_${it.subtitle.lowercase(Locale.ROOT)}" }
                 .take(maxResults)
 
-            if (filtered.isNotEmpty()) {
-                filtered
-            } else {
-                OfflineNavigationEngine.searchPlaces(query, maxResults)
-            }
+            combined
         }
 
     private fun formatAddressTitle(

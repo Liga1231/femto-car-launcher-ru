@@ -118,11 +118,11 @@ internal class DestinationViewModel(
         viewModelScope.launch {
             @OptIn(FlowPreview::class)
             query
-                .debounce(300)
+                .debounce(1000)
                 .distinctUntilChanged()
                 .collectLatest { text ->
                     val trimmed = text.trim()
-                    if (trimmed.length < 2 || destinationGeocoder == null) {
+                    if (trimmed.length < 3 || destinationGeocoder == null) {
                         suggestions.value = emptyList()
                         isSearchingSuggestions.value = false
                     } else {
