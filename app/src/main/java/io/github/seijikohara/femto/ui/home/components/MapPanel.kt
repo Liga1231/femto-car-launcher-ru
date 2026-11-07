@@ -149,13 +149,31 @@ private val ExposedContentClearance = MapControlsStripWidth + FemtoDimens.Screen
 // readable on the widest head-unit screens.
 private val ExposedContentMaxWidth = 480.dp
 
-internal fun Location.carriedBearing(holder: FloatArray): Float =
+internal fun Location.carriedBearing(
+    holder: FloatArray,
+    lastFixHolder: Array<Location?>? = null,
+): Float {
     if (hasBearing() && bearing != 0f) {
         holder[0] = bearing
-        bearing
-    } else {
-        holder[0]
+        if (lastFixHolder != null) lastFixHolder[0] = this
+        return bearing
     }
+    if (lastFixHolder != null) {
+        val prev = lastFixHolder[0]
+        if (prev != null) {
+            val dist = prev.distanceTo(this)
+            if (dist >= 1.5f) {
+                val computed = (prev.bearingTo(this) + 360f) % 360f
+                holder[0] = computed
+                lastFixHolder[0] = this
+                return computed
+            }
+        } else {
+            lastFixHolder[0] = this
+        }
+    }
+    return holder[0]
+}
 
 @Composable
 internal fun Attribution(

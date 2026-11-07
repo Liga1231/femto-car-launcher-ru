@@ -78,10 +78,33 @@ internal class LocationRepository(
     // so a location source that stays silent until the first live fix starves the whole
     // dashboard into its Initial state — no cards, music stuck on the connect CTA, map
     // unavailable (reproduced on-device against 6cc0bf71).
+    @Volatile
+    private var lastBearingFix: Location? = null
+
+    private fun enrichLocationBearing(location: Location): Location {
+        if (location.hasBearing() && location.bearing != 0f) {
+            lastBearingFix = location
+            return location
+        }
+        val prev = lastBearingFix
+        if (prev != null) {
+            val dist = prev.distanceTo(location)
+            if (dist >= 1.5f) {
+                val computed = (prev.bearingTo(location) + 360f) % 360f
+                location.bearing = computed
+                lastBearingFix = location
+                return location
+            }
+        } else {
+            lastBearingFix = location
+        }
+        return location
+    }
+
     @SuppressLint("MissingPermission") // Caller checks fine or coarse location before subscribing.
     private fun rawLocationFlow(settings: LocationSettings): Flow<Location?> =
         callbackFlow {
-            val listener = LocationListenerCompat { location -> trySend(location) }
+            val listener = LocationListenerCompat { location -> trySend(enrichLocationBearing(location)) }
             var seeded = false
             var isRegistered = false
 
@@ -113,7 +136,7 @@ internal class LocationRepository(
                 }.onSuccess { cached ->
                     cached?.let {
                         seeded = true
-                        trySend(it)
+                        trySend(enrichLocationBearing(it))
                     }
                 }.onFailure { logProviderFailure("getLastKnownLocation", provider, it) }
             }

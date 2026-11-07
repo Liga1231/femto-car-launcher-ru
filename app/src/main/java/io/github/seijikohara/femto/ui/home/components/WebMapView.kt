@@ -162,6 +162,7 @@ internal fun WebMapView(
     val currentOnBearingChange by rememberUpdatedState(onBearingChange)
     val currentOnSelectRoute by rememberUpdatedState(onSelectRoute)
     val bearingHolder = remember { floatArrayOf(0f) }
+    val lastLocationHolder = remember { arrayOfNulls<Location>(1) }
     val isDark =
         when (mapConfig.style) {
             MapStyleSetting.AUTO -> LocalFemtoDarkTheme.current
@@ -817,7 +818,7 @@ internal fun WebMapView(
         markerColor,
     ) {
         if (!pageReady.value) return@LaunchedEffect
-        val bearing = location.carriedBearing(bearingHolder)
+        val bearing = location.carriedBearing(bearingHolder, lastLocationHolder)
         webView.evaluateJavascript(
             "window.updateCamera && updateCamera(" +
                 "${location.latitude}, ${location.longitude}, $bearing, ${mapConfig.zoom}, ${mapConfig.tiltDeg}, " +

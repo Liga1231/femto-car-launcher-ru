@@ -225,15 +225,15 @@ private fun ControlIcon(
 // inset that keeps the segment dividers off the pill edges. The pill's corner is
 // MaterialTheme.shapes.large, shared with the other glass panels.
 // Internal: the dashboard's video window clears the compass by it.
-internal val MapCompassSize = 48.dp
+internal val MapCompassSize = 56.dp
 
 // Width of the control pill — shared with ExposedMapRegion (MapPanel), whose
 // centred content insets past this strip so text never slides under the
 // locate / zoom controls riding the exposed region's driver-side edge.
-internal val MapControlsStripWidth = 48.dp
-private val SEGMENT_HEIGHT = 48.dp
-private val CONTROL_ICON_SIZE = 22.dp
-private val GROUP_DIVIDER_INSET = 12.dp
+internal val MapControlsStripWidth = 56.dp
+private val SEGMENT_HEIGHT = 56.dp
+private val CONTROL_ICON_SIZE = 28.dp
+private val GROUP_DIVIDER_INSET = 14.dp
 
 // Compass needle: half-width of the waist as a fraction of the glyph width,
 // and the muted alpha of the south half.

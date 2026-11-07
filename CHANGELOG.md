@@ -130,3 +130,8 @@
 * **Offline routing & geocoding:** When disconnected from the internet, transparently falls back to local `search.db` and the built-in road graph for offline turn-by-turn routing and address search.
 * **Bundled fonts & sprites:** Noto Sans SDF glyphs (with full Cyrillic & Latin support) and OpenFreeMap sprites are bundled for complete offline map rendering of street labels, building numbers, and map symbols.
 
+
+### 10. 🧭 Heading-Up Map Rotation & Enlarged Touch Controls
+* **Dynamic Travel Bearing Calculation:** When the hardware GNSS provider does not report Doppler bearing, the launcher automatically computes travel azimuth between consecutive GPS fixes (displacement $\ge 1.5$ m). The map smoothly rotates in the direction of travel with heading-up camera follow.
+* **Enlarged Touch Controls for Smartphones:** Scaled map controls (+ / - zoom, recenter, and compass) to 56×56 dp with 28 dp icons for comfortable one-tap interaction on dashboard-mounted smartphones while driving.
+
