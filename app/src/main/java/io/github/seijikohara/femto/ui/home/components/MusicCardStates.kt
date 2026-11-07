@@ -1,8 +1,11 @@
 package io.github.seijikohara.femto.ui.home.components
 
+import io.github.seijikohara.femto.data.music.MusicVibe
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -37,9 +40,11 @@ internal fun MusicConnectState(
     // Forwarded to the height sample: the album-line toggle changes the Playing
     // card's height, and the idle card must match it either way.
     showAlbum: Boolean,
+    fillHeight: Boolean = false,
+    isOnline: Boolean = true,
 ) = Surface(
     onClick = onConnect,
-    modifier = Modifier.fillMaxWidth(),
+    modifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
     // Transparent so the card's glass (the outer MusicCard's glassChrome) shows
     // through in every state — the same translucency the Playing state has. An
     // opaque colour here would paint over the blurred map behind the card.
@@ -101,12 +106,16 @@ internal fun MusicConnectState(
 @Composable
 internal fun MusicEmptyState(
     onPlay: () -> Unit,
+    onSelectVibe: (MusicVibe) -> Unit = {},
+    onOpenVibeSheet: (() -> Unit)? = null,
     // Forwarded to the height sample: the album-line toggle changes the Playing
     // card's height, and the idle card must match it either way.
     showAlbum: Boolean,
+    fillHeight: Boolean = false,
+    isOnline: Boolean = true,
 ) = Surface(
     onClick = onPlay,
-    modifier = Modifier.fillMaxWidth(),
+    modifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
     // Transparent so the card stays translucent glass when nothing is playing —
     // this state was a plain Column (no surface) before it became tappable, and
     // an opaque colour regressed it to a solid box over the map.
@@ -155,6 +164,14 @@ internal fun MusicEmptyState(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 280.dp),
+            )
+            Box(modifier = Modifier.height(8.dp))
+            MusicVibeBar(
+                currentVibeTitle = null,
+                onSelectVibe = onSelectVibe,
+                onOpenSheet = onOpenVibeSheet,
+                isOnline = isOnline,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -220,6 +237,11 @@ private fun PlayingHeightSample(showAlbum: Boolean) =
             isPlaying = false,
             playbackSpeed = 1f,
             showAlbum = showAlbum,
+        )
+        MusicVibeBar(
+            currentVibeTitle = null,
+            onSelectVibe = {},
+            modifier = Modifier.fillMaxWidth(),
         )
         TransportRow(isPlaying = false, onCommand = {})
     }

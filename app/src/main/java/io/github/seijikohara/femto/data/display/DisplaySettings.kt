@@ -21,7 +21,7 @@ internal enum class ClockSetting { AUTO, TWELVE_HOUR, TWENTY_FOUR_HOUR }
  * Public (unlike the other display enums) because the public [FemtoTheme] takes
  * it as a parameter.
  */
-enum class AccentColor { DYNAMIC, BLUE, TEAL, GREEN, AMBER, ORANGE, RED, VIOLET, PINK }
+enum class AccentColor { DYNAMIC, BLUE, TEAL, GREEN, AMBER, ORANGE, RED, VIOLET, PINK, SLATE, GRAPHITE, WARM }
 
 /**
  * Global UI scale, applied as a density multiplier over the whole UI (text, icons,
@@ -47,6 +47,12 @@ enum class UiScale(
 
 /** Fullscreen: keep the system bars, or hide both status and navigation bars. */
 internal enum class FullscreenSetting { OFF, ON }
+
+/**
+ * Music card height: [NORMAL] is the compact side-by-side card; [TALL] grows the
+ * album art; [EXTRA] stacks the art centred above the title and timeline.
+ */
+internal enum class MusicCardHeight { NORMAL, TALL, EXTRA }
 
 /**
  * Assistant entry: [SYSTEM] hands the dock mic to the device's default
@@ -125,7 +131,7 @@ internal enum class MapStyleSetting { AUTO, LIGHT, DARK }
  * blank. The light and dark schemes are chosen independently (see
  * [DisplaySettings.mapSchemeLight] / [DisplaySettings.mapSchemeDark]).
  */
-internal enum class MapColorScheme { ACCENT, POSITRON, BRIGHT, LIBERTY, DARK_MATTER, DARK, FIORD, CUSTOM }
+internal enum class MapColorScheme { ACCENT, MUTED, WARM, SLATE, POSITRON, BRIGHT, LIBERTY, DARK_MATTER, DARK, FIORD, CUSTOM }
 
 /** Default oblique-camera tilt (degrees) and zoom level for the map. */
 internal const val DEFAULT_MAP_TILT_DEG = 55
@@ -297,13 +303,18 @@ internal data class DisplaySettings(
      * nothing about it is rewritten — see MapScheme.mapStyleRefFor.
      */
     val mapCustomStyleUrl: String = "",
+    // Music card height; NORMAL by default so a fresh install keeps the compact card.
+    val musicCardHeight: MusicCardHeight = MusicCardHeight.TALL,
+    val themeScheduleEnabled: Boolean = false,
+    val themeScheduleLightHour: Int = 7,
+    val themeScheduleDarkHour: Int = 20,
 ) {
     companion object {
         val Default =
             DisplaySettings(
                 themeMode = ThemeMode.SYSTEM,
                 accentColor = AccentColor.DYNAMIC,
-                uiScale = UiScale.MEDIUM,
+                uiScale = UiScale.COMPACT,
                 speedUnit = SpeedUnitSetting.AUTO,
                 temperatureUnit = TemperatureUnitSetting.AUTO,
                 clock = ClockSetting.AUTO,
@@ -311,9 +322,9 @@ internal data class DisplaySettings(
                 fullscreen = FullscreenSetting.ON,
                 dockPosition = DockPosition.BOTTOM,
                 dockWidth = DockWidth.COMPACT,
-                driverSide = DriverSide.RIGHT,
+                driverSide = DriverSide.LEFT,
                 motionTier = MotionTier.STANDARD,
-                orientation = OrientationSetting.AUTO,
+                orientation = OrientationSetting.LANDSCAPE,
                 keepScreenOn = true,
                 assistantLaunch = AssistantLaunchSetting.SYSTEM,
                 mapStyle = MapStyleSetting.AUTO,
@@ -334,8 +345,8 @@ internal data class DisplaySettings(
                 fontBaseSizeSp = DEFAULT_FONT_BASE_SIZE_SP,
                 fontWeightStep = DEFAULT_FONT_WEIGHT_STEP,
                 fontLetterSpacingCentiEm = DEFAULT_FONT_LETTER_SPACING_CENTI_EM,
-                showCalendar = true,
-                showWeather = true,
+                showCalendar = false,
+                showWeather = false,
                 showMusic = true,
                 calendarDateOnly = false,
                 musicSpectrum = false,
@@ -349,6 +360,10 @@ internal data class DisplaySettings(
                 googleMapsTraffic = false,
                 mapTileHost = "",
                 mapCustomStyleUrl = "",
+                musicCardHeight = MusicCardHeight.TALL,
+                themeScheduleEnabled = false,
+                themeScheduleLightHour = 7,
+                themeScheduleDarkHour = 20,
             )
     }
 }

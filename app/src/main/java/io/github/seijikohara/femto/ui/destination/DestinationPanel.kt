@@ -1,57 +1,84 @@
 package io.github.seijikohara.femto.ui.destination
 
 import android.Manifest
+import android.text.format.DateUtils
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.composables.icons.lucide.History
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.MapPin
 import com.composables.icons.lucide.Mic
 import com.composables.icons.lucide.Navigation
+import com.composables.icons.lucide.NavigationOff
 import com.composables.icons.lucide.Search
 import com.composables.icons.lucide.Trash2
+import com.composables.icons.lucide.X
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.seijikohara.femto.R
 import io.github.seijikohara.femto.data.common.hasRecordAudioPermission
 import io.github.seijikohara.femto.data.location.VehicleMotion
+import io.github.seijikohara.femto.data.navigation.AddressSuggestion
+import io.github.seijikohara.femto.data.places.HistoryItem
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.data.places.SavedPlace
 import io.github.seijikohara.femto.data.voice.VoiceState
@@ -61,6 +88,7 @@ import io.github.seijikohara.femto.ui.home.components.PanelIconButton
 import io.github.seijikohara.femto.ui.theme.FemtoDimens
 import io.github.seijikohara.femto.ui.theme.FemtoIcon
 import io.github.seijikohara.femto.ui.theme.FemtoTheme
+import io.github.seijikohara.femto.ui.theme.LocalFemtoDarkTheme
 import io.github.seijikohara.femto.ui.theme.PreviewLightDark
 import io.github.seijikohara.femto.ui.theme.PreviewTextStress
 import io.github.seijikohara.femto.ui.theme.drawerBody
@@ -95,6 +123,7 @@ internal fun DestinationPanel(
     onOpenMaps: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    isOnline: Boolean = true,
     hazeState: HazeState = rememberHazeState(),
     glassConfig: GlassConfig = GlassConfig(),
 ) = MaximizePanel(
@@ -127,20 +156,37 @@ internal fun DestinationPanel(
             uiState = uiState,
             currentPoint = currentPoint,
             currentAddress = currentAddress,
+            isOnline = isOnline,
             onAction = onAction,
             onMicTap = onMicTap,
             onNavigate = handOff,
             modifier = entryModifier,
         )
     }
-    val places: @Composable (Modifier) -> Unit = { placesModifier ->
-        SavedPlaces(
-            places = uiState.places,
-            typingAllowed = uiState.typingAllowed,
-            onNavigate = handOff,
-            onDelete = { onAction(DestinationAction.DeletePlace(it)) },
-            modifier = placesModifier,
-        )
+    val showSuggestions = isOnline && uiState.query.trim().isNotEmpty() &&
+        (uiState.suggestions.isNotEmpty() || uiState.isSearchingSuggestions)
+    val rightPane: @Composable (Modifier) -> Unit = { paneModifier ->
+        if (!isOnline && uiState.query.trim().isNotEmpty()) {
+            OfflineSearchBlocked(modifier = paneModifier)
+        } else if (showSuggestions) {
+            AddressSuggestions(
+                suggestions = uiState.suggestions,
+                isSearching = uiState.isSearchingSuggestions,
+                onNavigate = handOff,
+                modifier = paneModifier,
+            )
+        } else {
+            SavedPlacesAndHistory(
+                places = uiState.places,
+                history = uiState.history,
+                typingAllowed = uiState.typingAllowed,
+                onNavigate = handOff,
+                onDeletePlace = { onAction(DestinationAction.DeletePlace(it)) },
+                onDeleteHistory = { onAction(DestinationAction.DeleteHistory(it)) },
+                onClearHistory = { onAction(DestinationAction.ClearHistory) },
+                modifier = paneModifier,
+            )
+        }
     }
     if (portrait) {
         Column(
@@ -148,7 +194,7 @@ internal fun DestinationPanel(
             verticalArrangement = Arrangement.spacedBy(FemtoDimens.ScreenPadding),
         ) {
             entry(Modifier.fillMaxWidth())
-            places(Modifier.fillMaxWidth().weight(1f))
+            rightPane(Modifier.fillMaxWidth().weight(1f))
         }
     } else {
         Row(
@@ -158,7 +204,7 @@ internal fun DestinationPanel(
             // The entry scrolls on its own: a short landscape panel (800x480)
             // cannot fit the field, the hint and both button rows at once.
             entry(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()))
-            places(Modifier.weight(1f).fillMaxHeight())
+            rightPane(Modifier.weight(1f).fillMaxHeight())
         }
     }
 }
@@ -166,89 +212,203 @@ internal fun DestinationPanel(
 // The query field with its mic, the motion or voice line, Navigate, and the
 // two save buttons.
 @Composable
+private fun OfflineWarningBanner(modifier: Modifier = Modifier) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f),
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            FemtoIcon(
+                imageVector = Lucide.NavigationOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(22.dp),
+            )
+            Text(
+                text = "Нет подключения к интернету. Поиск адресов и навигация доступны только онлайн.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OfflineSearchBlocked(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(24.dp),
+        ) {
+            FemtoIcon(
+                imageVector = Lucide.NavigationOff,
+                contentDescription = null,
+                modifier = Modifier.size(54.dp),
+                tint = MaterialTheme.colorScheme.error,
+            )
+            Text(
+                text = "Поиск заблокирован без интернета",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Поиск адресов и расчёт маршрутов работают в онлайн-режиме. Подключите интернет для поиска мест.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
 private fun DestinationEntry(
     uiState: DestinationUiState,
     currentPoint: PlaceTarget.Point?,
     currentAddress: String,
+    isOnline: Boolean,
     onAction: (DestinationAction) -> Unit,
     onMicTap: () -> Unit,
     onNavigate: (target: PlaceTarget, label: String) -> Unit,
     modifier: Modifier = Modifier,
-) = Column(
-    modifier = modifier,
-    verticalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
 ) {
-    val query = uiState.query.trim()
-    val navigate = { if (query.isNotEmpty()) onNavigate(PlaceTarget.Query(query), "") }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
-    ) {
-        OutlinedTextField(
-            value = uiState.query,
-            onValueChange = { onAction(DestinationAction.QueryChanged(it)) },
-            enabled = uiState.typingAllowed,
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .heightIn(min = FemtoDimens.MinTouchTarget)
-                    .testTag(DESTINATION_QUERY_TEST_TAG),
-            textStyle = MaterialTheme.typography.drawerBody(),
-            placeholder = {
-                Text(
-                    text = stringResource(R.string.destination_query_hint),
-                    style = MaterialTheme.typography.drawerBody(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            leadingIcon = { FemtoIcon(imageVector = Lucide.Search, contentDescription = null) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { navigate() }),
-        )
-        // Hidden where the device has no speech recognizer: a mic that can
-        // never listen is a dead control.
-        if (uiState.voice != VoiceState.Unavailable) {
-            MicButton(listening = uiState.voice is VoiceState.Listening, onClick = onMicTap)
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(uiState.query, TextRange(uiState.query.length)))
+    }
+
+    LaunchedEffect(uiState.query) {
+        if (textFieldValue.text != uiState.query) {
+            textFieldValue = TextFieldValue(
+                text = uiState.query,
+                selection = TextRange(uiState.query.length),
+            )
         }
     }
-    StatusLine(voice = uiState.voice, typingAllowed = uiState.typingAllowed)
-    Button(
-        onClick = navigate,
-        enabled = query.isNotEmpty(),
-        modifier = Modifier.fillMaxWidth().heightIn(min = FemtoDimens.MinTouchTarget),
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
     ) {
-        FemtoIcon(
-            imageVector = Lucide.Navigation,
-            contentDescription = null,
-            modifier = Modifier.size(FemtoDimens.InlineIconSize),
-        )
-        Text(
-            text = stringResource(R.string.destination_navigate),
-            modifier = Modifier.padding(start = ButtonDefaults.IconSpacing),
-        )
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
-    ) {
-        FilledTonalButton(
-            onClick = { onAction(DestinationAction.SaveQuery) },
-            enabled = uiState.typingAllowed && query.isNotEmpty(),
-            modifier = Modifier.weight(1f).heightIn(min = FemtoDimens.MinTouchTarget),
-        ) {
-            Text(text = stringResource(R.string.destination_save_query))
+        if (!isOnline) {
+            OfflineWarningBanner()
         }
-        FilledTonalButton(
-            onClick = {
-                currentPoint?.let { onAction(DestinationAction.SaveCurrentLocation(it, currentAddress)) }
-            },
-            enabled = uiState.typingAllowed && currentPoint != null,
-            modifier = Modifier.weight(2f).heightIn(min = FemtoDimens.MinTouchTarget),
+        val query = textFieldValue.text.trim()
+        val navigate = { if (isOnline && query.isNotEmpty()) onNavigate(PlaceTarget.Query(query), "") }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
         ) {
-            Text(text = stringResource(R.string.destination_save_location))
+            OutlinedTextField(
+                value = textFieldValue,
+                onValueChange = { newValue ->
+                    textFieldValue = newValue
+                    onAction(DestinationAction.QueryChanged(newValue.text))
+                },
+                enabled = isOnline && uiState.typingAllowed,
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = FemtoDimens.MinTouchTarget)
+                        .testTag(DESTINATION_QUERY_TEST_TAG),
+                textStyle = MaterialTheme.typography.drawerBody(),
+                placeholder = {
+                    Text(
+                        text = if (!isOnline) "Поиск заблокирован (нет интернета)" else stringResource(R.string.destination_query_hint),
+                        style = MaterialTheme.typography.drawerBody(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                leadingIcon = {
+                    FemtoIcon(
+                        imageVector = if (!isOnline) Lucide.NavigationOff else Lucide.Search,
+                        contentDescription = null,
+                        tint = if (!isOnline) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    )
+                },
+                trailingIcon = {
+                    if (textFieldValue.text.isNotEmpty() && uiState.typingAllowed) {
+                        IconButton(
+                            onClick = {
+                                textFieldValue = TextFieldValue("", TextRange.Zero)
+                                onAction(DestinationAction.QueryChanged(""))
+                            },
+                        ) {
+                            FemtoIcon(
+                                imageVector = Lucide.X,
+                                contentDescription = "Очистить",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { navigate() }),
+            )
+            // Hidden where the device has no speech recognizer or offline:
+            if (isOnline && uiState.voice != VoiceState.Unavailable) {
+                MicButton(listening = uiState.voice is VoiceState.Listening, onClick = onMicTap)
+            }
+        }
+        if (isOnline) {
+            QuickStreetSuggestionsBar(
+                query = textFieldValue.text,
+                suggestions = uiState.suggestions,
+                onSelectStreet = { street ->
+                    val newText = "$street, "
+                    textFieldValue = TextFieldValue(newText, TextRange(newText.length))
+                    onAction(DestinationAction.QueryChanged(newText))
+                },
+            )
+            StatusLine(voice = uiState.voice, typingAllowed = uiState.typingAllowed)
+        }
+        Button(
+            onClick = navigate,
+            enabled = isOnline && query.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = FemtoDimens.MinTouchTarget),
+        ) {
+            FemtoIcon(
+                imageVector = if (!isOnline) Lucide.NavigationOff else Lucide.Navigation,
+                contentDescription = null,
+                modifier = Modifier.size(FemtoDimens.InlineIconSize),
+            )
+            Text(
+                text = if (!isOnline) "Требуется интернет" else stringResource(R.string.destination_navigate),
+                modifier = Modifier.padding(start = ButtonDefaults.IconSpacing),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
+        ) {
+            FilledTonalButton(
+                onClick = { onAction(DestinationAction.SaveQuery) },
+                enabled = isOnline && uiState.typingAllowed && query.isNotEmpty(),
+                modifier = Modifier.weight(1f).heightIn(min = FemtoDimens.MinTouchTarget),
+            ) {
+                Text(text = stringResource(R.string.destination_save_query))
+            }
+            FilledTonalButton(
+                onClick = {
+                    currentPoint?.let { onAction(DestinationAction.SaveCurrentLocation(it, currentAddress)) }
+                },
+                enabled = isOnline && uiState.typingAllowed && currentPoint != null,
+                modifier = Modifier.weight(2f).heightIn(min = FemtoDimens.MinTouchTarget),
+            ) {
+                Text(text = stringResource(R.string.destination_save_location))
+            }
         }
     }
 }
@@ -312,38 +472,176 @@ private fun MicButton(
 // The saved places in insertion order (newest last). A row tap hands the
 // place off in any motion state; the trailing delete shows only while stopped.
 @Composable
-private fun SavedPlaces(
+private fun SavedPlacesAndHistory(
     places: List<SavedPlace>,
+    history: List<HistoryItem>,
     typingAllowed: Boolean,
     onNavigate: (target: PlaceTarget, label: String) -> Unit,
-    onDelete: (Long) -> Unit,
+    onDeletePlace: (Long) -> Unit,
+    onDeleteHistory: (Long) -> Unit,
+    onClearHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) = Column(
     modifier = modifier,
     verticalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
 ) {
-    Text(
-        text = stringResource(R.string.destination_saved_places).uppercase(),
-        style = MaterialTheme.typography.eyebrow(),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    if (places.isEmpty()) {
-        Text(
-            text = stringResource(R.string.destination_no_saved_places),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    } else {
-        LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            items(places, key = { it.id }) { place ->
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth().weight(1f),
+        verticalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
+    ) {
+        if (places.isNotEmpty()) {
+            item(key = "header_saved") {
+                Text(
+                    text = stringResource(R.string.destination_saved_places).uppercase(),
+                    style = MaterialTheme.typography.eyebrow(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            items(places, key = { "place_${it.id}" }) { place ->
                 SavedPlaceRow(
                     place = place,
                     showDelete = typingAllowed,
                     onNavigate = { onNavigate(place.target, place.label) },
-                    onDelete = { onDelete(place.id) },
+                    onDelete = { onDeletePlace(place.id) },
+                )
+            }
+            item(key = "divider_history") {
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+        }
+
+        item(key = "header_history") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.destination_history_title).uppercase(),
+                    style = MaterialTheme.typography.eyebrow(),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                if (history.isNotEmpty() && typingAllowed) {
+                    Row(
+                        modifier =
+                            Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(onClick = onClearHistory)
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        FemtoIcon(
+                            imageVector = Lucide.Trash2,
+                            contentDescription = stringResource(R.string.destination_clear_history),
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = stringResource(R.string.destination_clear_history),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (history.isEmpty()) {
+            item(key = "empty_history") {
+                Text(
+                    text =
+                        if (places.isEmpty()) {
+                            stringResource(R.string.destination_no_places_or_history)
+                        } else {
+                            stringResource(R.string.destination_history_empty)
+                        },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            items(history, key = { "hist_${it.id}" }) { item ->
+                HistoryItemRow(
+                    item = item,
+                    showDelete = typingAllowed,
+                    onNavigate = { onNavigate(item.target, item.label) },
+                    onDelete = { onDeleteHistory(item.id) },
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun HistoryItemRow(
+    item: HistoryItem,
+    showDelete: Boolean,
+    onNavigate: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) = Row(
+    modifier = modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically,
+) {
+    Row(
+        modifier =
+            Modifier
+                .weight(1f)
+                .heightIn(min = FemtoDimens.MinTouchTarget)
+                .clip(MaterialTheme.shapes.medium)
+                .clickable(onClick = onNavigate)
+                .padding(horizontal = FemtoDimens.CardSectionGap),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            FemtoIcon(
+                imageVector = Lucide.History,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.label,
+                style = MaterialTheme.typography.drawerBody(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val queryText = (item.target as? PlaceTarget.Query)?.text?.takeIf { it != item.label }
+            val timeText =
+                runCatching {
+                    DateUtils.getRelativeTimeSpanString(
+                        item.timestampMs,
+                        System.currentTimeMillis(),
+                        DateUtils.MINUTE_IN_MILLIS,
+                    ).toString()
+                }.getOrNull() ?: "Недавний маршрут"
+
+            Text(
+                text = queryText ?: timeText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+    if (showDelete) {
+        PanelIconButton(
+            icon = Lucide.X,
+            description = stringResource(R.string.destination_delete_history_item),
+            onClick = onDelete,
+        )
     }
 }
 
@@ -404,6 +702,210 @@ private fun SavedPlaceRow(
     }
 }
 
+@Composable
+private fun AddressSuggestions(
+    suggestions: List<AddressSuggestion>,
+    isSearching: Boolean,
+    onNavigate: (target: PlaceTarget, label: String) -> Unit,
+    modifier: Modifier = Modifier,
+) = Column(
+    modifier = modifier,
+    verticalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "ПРЕДЛОЖЕНИЯ АДРЕСОВ",
+            style = MaterialTheme.typography.eyebrow(),
+            color = MaterialTheme.colorScheme.primary,
+        )
+        if (isSearching) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+
+    if (suggestions.isEmpty() && !isSearching) {
+        Text(
+            text = "Адреса не найдены",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            itemsIndexed(suggestions, key = { index, item -> "${item.point.latitude}_${item.point.longitude}_$index" }) { _, suggestion ->
+                SuggestionRow(
+                    suggestion = suggestion,
+                    onClick = { onNavigate(suggestion.point, suggestion.title) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickStreetSuggestionsBar(
+    query: String,
+    suggestions: List<AddressSuggestion>,
+    onSelectStreet: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cleanQuery = query.trim().lowercase(Locale.ROOT)
+    if (cleanQuery.length < 2) return
+
+    val matchingStreets = remember(suggestions, cleanQuery) {
+        val list = mutableListOf<String>()
+        val seen = mutableSetOf<String>()
+        for (s in suggestions) {
+            val street = s.title.substringBefore(',').trim()
+            val streetL = street.lowercase(Locale.ROOT)
+            if (streetL != cleanQuery && seen.add(streetL)) {
+                list.add(street)
+                if (list.size >= 6) break
+            }
+        }
+        list
+    }
+
+    if (matchingStreets.isNotEmpty()) {
+        Column(
+            modifier = modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = "Быстрый выбор улицы:",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items(matchingStreets) { street ->
+                    Surface(
+                        onClick = { onSelectStreet(street) },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                        modifier = Modifier.heightIn(min = 34.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            FemtoIcon(
+                                imageVector = Lucide.MapPin,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = street,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestionRow(
+    suggestion: AddressSuggestion,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = LocalFemtoDarkTheme.current
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    if (isDark) {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                )
+                .then(
+                    if (!isDark) {
+                        Modifier.border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                            RoundedCornerShape(12.dp),
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+    Box(
+        modifier =
+            Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        FemtoIcon(
+            imageVector = Lucide.MapPin,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+
+    Spacer(modifier = Modifier.width(12.dp))
+
+    Column(modifier = Modifier.weight(1f)) {
+        Text(
+            text = suggestion.title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (suggestion.subtitle.isNotBlank()) {
+            Text(
+                text = suggestion.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.width(8.dp))
+
+    FemtoIcon(
+        imageVector = Lucide.Navigation,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.size(20.dp),
+    )
+    }
+}
+
 /**
  * Binds [DestinationViewModel] to [DestinationPanel] and owns the
  * RECORD_AUDIO request, the same way the assistant sheet does: the mic asks
@@ -420,6 +922,7 @@ internal fun DestinationPanelHost(
     onOpenMaps: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    isOnline: Boolean = true,
     hazeState: HazeState = rememberHazeState(),
     glassConfig: GlassConfig = GlassConfig(),
 ) {
@@ -434,6 +937,7 @@ internal fun DestinationPanelHost(
         uiState = uiState,
         currentPoint = currentPoint,
         currentAddress = currentAddress,
+        isOnline = isOnline,
         onAction = viewModel::onAction,
         onMicTap = {
             when {
@@ -443,6 +947,14 @@ internal fun DestinationPanelHost(
             }
         },
         onNavigate = { target, label ->
+            val resolvedLabel =
+                label.ifBlank {
+                    when (target) {
+                        is PlaceTarget.Query -> target.text
+                        is PlaceTarget.Point -> "Пункт назначения"
+                    }
+                }
+            viewModel.recordDestination(resolvedLabel, target)
             onNavigate(target, label)
             viewModel.onAction(DestinationAction.ClearQuery)
             onClose()
@@ -500,6 +1012,10 @@ private val PreviewState =
             listOf(
                 SavedPlace(1L, "Office", PlaceTarget.Query("1st & Pike, Seattle")),
                 SavedPlace(2L, "Home", PlaceTarget.Point(35.681236, 139.767125)),
+            ),
+        history =
+            listOf(
+                HistoryItem(1L, "Central Mall", PlaceTarget.Query("Central Mall")),
             ),
         motion = VehicleMotion.MOVING,
     )

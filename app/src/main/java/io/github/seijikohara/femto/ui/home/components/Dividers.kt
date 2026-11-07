@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.seijikohara.femto.ui.theme.FemtoDimens
+import io.github.seijikohara.femto.ui.theme.LocalFemtoDarkTheme
 
 /**
  * Shared hairline-divider recipe for the dashboard's glass chrome: a thin M3
@@ -21,14 +22,24 @@ import io.github.seijikohara.femto.ui.theme.FemtoDimens
 @Composable
 internal fun FemtoVerticalDivider(
     modifier: Modifier = Modifier,
-    color: Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = FemtoDimens.DividerAlpha),
+    color: Color =
+        if (LocalFemtoDarkTheme.current) {
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = FemtoDimens.DividerAlpha)
+        } else {
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        },
 ) = VerticalDivider(modifier = modifier, color = color)
 
 /** [FemtoVerticalDivider]'s counterpart for a horizontal seam. */
 @Composable
 internal fun FemtoHorizontalDivider(
     modifier: Modifier = Modifier,
-    color: Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = FemtoDimens.DividerAlpha),
+    color: Color =
+        if (LocalFemtoDarkTheme.current) {
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = FemtoDimens.DividerAlpha)
+        } else {
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        },
 ) = HorizontalDivider(modifier = modifier, color = color)
 
 /**

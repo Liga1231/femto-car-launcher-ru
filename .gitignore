@@ -51,3 +51,7 @@ keystore.properties
 /docs/.astro/
 /docs/dist/
 /docs/public/catalog/
+
+# Map binaries
+*.mbtiles
+*.apk

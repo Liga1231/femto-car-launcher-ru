@@ -1,5 +1,6 @@
 package io.github.seijikohara.femto.ui.home.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,6 +49,7 @@ import io.github.seijikohara.femto.data.dock.DockStatusId
 import io.github.seijikohara.femto.data.system.SystemStatus
 import io.github.seijikohara.femto.ui.home.HomeAction
 import io.github.seijikohara.femto.ui.theme.FemtoIcon
+import io.github.seijikohara.femto.ui.theme.LocalFemtoDarkTheme
 import io.github.seijikohara.femto.ui.theme.Motion
 import io.github.seijikohara.femto.ui.theme.glanceCaption
 
@@ -85,7 +87,7 @@ internal fun StatusCluster(
     }
     if (vertical) {
         Column(
-            modifier = modifier,
+            modifier = modifier.clickable { onAction(HomeAction.OpenQuickSettings) },
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
@@ -93,7 +95,7 @@ internal fun StatusCluster(
         }
     } else {
         Row(
-            modifier = modifier.fillMaxHeight(),
+            modifier = modifier.fillMaxHeight().clickable { onAction(HomeAction.OpenQuickSettings) },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
@@ -143,7 +145,10 @@ private fun EditableStatusIndicator(
                         true
                     }
                 }.pointerInput(id) {
-                    detectTapGestures(onLongPress = { menuOpen = true })
+                    detectTapGestures(
+                        onTap = { onAction(HomeAction.OpenQuickSettings) },
+                        onLongPress = { menuOpen = true },
+                    )
                 },
     ) {
         StatusIndicator(id, status, tier)
@@ -231,7 +236,12 @@ private fun StatusIndicator(
         }
 
         DockStatusId.GPS -> {
-            GpsIndicator(fixed = status.gpsFixed, satelliteCount = status.gpsSatelliteCount, tier = tier)
+            GpsIndicator(
+                enabled = status.locationEnabled,
+                fixed = status.gpsFixed,
+                satelliteCount = status.gpsSatelliteCount,
+                tier = tier,
+            )
         }
 
         DockStatusId.BATTERY -> {
@@ -310,10 +320,17 @@ private fun StatusIcon(
     label = "statusIcon",
     modifier = modifier,
 ) { (glyph, lit) ->
+    val isDark = LocalFemtoDarkTheme.current
+    val tint =
+        if (lit) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            if (isDark) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        }
     FemtoIcon(
         imageVector = glyph,
         contentDescription = description,
-        tint = if (lit) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+        tint = tint,
         modifier = Modifier.size(20.dp),
     )
 }
@@ -323,6 +340,7 @@ private fun StatusIcon(
 // (no fresh GPS fix) so a parked / tunnelled cold start reads as "0 locked".
 @Composable
 private fun GpsIndicator(
+    enabled: Boolean,
     fixed: Boolean,
     satelliteCount: Int,
     tier: MotionTier,
@@ -330,16 +348,21 @@ private fun GpsIndicator(
 ) = Motion.ContentCrossfade(
     // The whole indicator (satellite glyph + count) dissolves together on a
     // fix/lost flip or a satellite-count change, keyed on that discrete pair.
-    targetState = Pair(fixed, satelliteCount),
+    targetState = Triple(enabled, fixed, satelliteCount),
     tier = tier,
     label = "gps",
     modifier = modifier,
-) { (isFixed, count) ->
+) { (isEnabled, isFixed, count) ->
+    val isDark = LocalFemtoDarkTheme.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
-        val tint = if (isFixed) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+        val tint = when {
+            !isEnabled -> if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+            isFixed -> MaterialTheme.colorScheme.onSurface
+            else -> if (isDark) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        }
         FemtoIcon(
             imageVector = Lucide.Satellite,
             contentDescription =
@@ -350,7 +373,7 @@ private fun GpsIndicator(
             modifier = Modifier.size(20.dp),
         )
         Text(
-            text = stringResource(R.string.status_gps_satellites, count),
+            text = if (!isEnabled) "ВЫКЛ" else stringResource(R.string.status_gps_satellites, count),
             style = MaterialTheme.typography.glanceCaption(),
             color = tint,
             maxLines = 1,
@@ -381,7 +404,7 @@ private fun BatteryIndicator(
         FemtoIcon(
             imageVector = batteryIconForLevel(percent = pct, charging = isCharging),
             contentDescription = stringResource(R.string.status_battery),
-            tint = if (isCharging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = if (isCharging) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(20.dp),
         )
         Text(

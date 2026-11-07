@@ -134,7 +134,7 @@ android {
 
     defaultConfig {
         applicationId = "io.github.seijikohara.femto"
-        minSdk = 33
+        minSdk = 29
         targetSdk = 36
         // CI injects versionCode/versionName: .github/actions/app-version
         // computes the date version for both channels, and the nightly and
@@ -174,7 +174,11 @@ android {
         // (old 32-bit AI boxes) simply has no libtripflyover.so, and the app
         // falls back to the 2D Compose renderer — never a crash.
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf(
+                "arm64-v8a",
+                "armeabi-v7a",
+                "x86_64",
+            )
         }
 
         externalNativeBuild {

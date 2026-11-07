@@ -34,6 +34,7 @@ import io.github.seijikohara.femto.R
 import io.github.seijikohara.femto.ui.theme.FemtoDimens
 import io.github.seijikohara.femto.ui.theme.FemtoIcon
 import io.github.seijikohara.femto.ui.theme.FemtoTheme
+import io.github.seijikohara.femto.ui.theme.LocalFemtoDarkTheme
 import io.github.seijikohara.femto.ui.theme.PreviewLightDark
 
 /**
@@ -55,8 +56,14 @@ internal fun MapCompass(
     glassConfig: GlassConfig,
     modifier: Modifier = Modifier,
 ) {
+    val isDark = LocalFemtoDarkTheme.current
     val north = MaterialTheme.colorScheme.primary
-    val south = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SOUTH_NEEDLE_ALPHA)
+    val south =
+        if (isDark) {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SOUTH_NEEDLE_ALPHA)
+        } else {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+        }
     val description = stringResource(R.string.map_compass_desc)
     Box(
         modifier =
@@ -141,7 +148,7 @@ internal fun MapControlColumn(
                 imageVector = Lucide.LocateFixed,
                 tint =
                     if (following) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        MaterialTheme.colorScheme.onSurface
                     } else {
                         MaterialTheme.colorScheme.primary
                     },
@@ -191,7 +198,12 @@ private fun GroupSegment(
 private fun GroupDivider(modifier: Modifier = Modifier) =
     HorizontalDivider(
         modifier = modifier.padding(horizontal = GROUP_DIVIDER_INSET),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = FemtoDimens.DividerAlpha),
+        color =
+            if (LocalFemtoDarkTheme.current) {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = FemtoDimens.DividerAlpha)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+            },
     )
 
 @Composable

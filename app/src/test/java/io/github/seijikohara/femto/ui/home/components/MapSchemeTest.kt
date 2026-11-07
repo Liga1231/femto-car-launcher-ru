@@ -21,6 +21,25 @@ class MapSchemeTest {
     }
 
     @Test
+    fun `muted warm and slate resolve to accent with tuned palettes`() {
+        val mutedLight = mapStyleRefFor(MapColorScheme.MUTED, isDark = false)
+        assertTrue(mutedLight is MapStyleRef.Accent)
+        assertEquals(MutedLightMapColors, mutedLight.customColors)
+
+        val mutedDark = mapStyleRefFor(MapColorScheme.MUTED, isDark = true)
+        assertTrue(mutedDark is MapStyleRef.Accent)
+        assertEquals(MutedDarkMapColors, mutedDark.customColors)
+
+        val warmLight = mapStyleRefFor(MapColorScheme.WARM, isDark = false)
+        assertTrue(warmLight is MapStyleRef.Accent)
+        assertEquals(WarmLightMapColors, warmLight.customColors)
+
+        val slateLight = mapStyleRefFor(MapColorScheme.SLATE, isDark = false)
+        assertTrue(slateLight is MapStyleRef.Accent)
+        assertEquals(SlateLightMapColors, slateLight.customColors)
+    }
+
+    @Test
     fun `dark matter resolves to the bundled dark asset`() {
         val ref = mapStyleRefFor(MapColorScheme.DARK_MATTER, isDark = true)
         assertEquals(MapStyleRef.Bundled(DARK_STYLE_ASSET), ref)

@@ -46,6 +46,7 @@ internal sealed interface MapStyleRef {
     // The bundled [baseAsset] recoloured with the Material accent (the ACCENT scheme).
     data class Accent(
         val baseAsset: String,
+        val customColors: AccentMapColors? = null,
     ) : MapStyleRef
 }
 
@@ -57,6 +58,27 @@ internal fun mapStyleRefFor(
     when (scheme) {
         MapColorScheme.ACCENT -> {
             MapStyleRef.Accent(if (isDark) DARK_STYLE_ASSET else LIGHT_STYLE_ASSET)
+        }
+
+        MapColorScheme.MUTED -> {
+            MapStyleRef.Accent(
+                if (isDark) DARK_STYLE_ASSET else LIGHT_STYLE_ASSET,
+                customColors = if (isDark) MutedDarkMapColors else MutedLightMapColors,
+            )
+        }
+
+        MapColorScheme.WARM -> {
+            MapStyleRef.Accent(
+                if (isDark) DARK_STYLE_ASSET else LIGHT_STYLE_ASSET,
+                customColors = if (isDark) WarmDarkMapColors else WarmLightMapColors,
+            )
+        }
+
+        MapColorScheme.SLATE -> {
+            MapStyleRef.Accent(
+                if (isDark) DARK_STYLE_ASSET else LIGHT_STYLE_ASSET,
+                customColors = if (isDark) SlateDarkMapColors else SlateLightMapColors,
+            )
         }
 
         MapColorScheme.POSITRON -> {
@@ -144,7 +166,7 @@ internal fun accentMapColors(isDark: Boolean): AccentMapColors =
             background = MaterialTheme.colorScheme.surface.toCssHex(),
             water = MaterialTheme.colorScheme.primaryContainer.toCssHex(),
             land = MaterialTheme.colorScheme.surfaceContainerLow.toCssHex(),
-            roadMajor = MaterialTheme.colorScheme.onSurfaceVariant.toCssHex(),
+            roadMajor = MaterialTheme.colorScheme.primary.toCssHex(),
             roadMinor = MaterialTheme.colorScheme.outline.toCssHex(),
             roadCasing = MaterialTheme.colorScheme.surfaceContainer.toCssHex(),
             building = MaterialTheme.colorScheme.surfaceContainerHigh.toCssHex(),
@@ -155,10 +177,83 @@ internal fun accentMapColors(isDark: Boolean): AccentMapColors =
             background = MaterialTheme.colorScheme.surfaceContainer.toCssHex(),
             water = MaterialTheme.colorScheme.primaryContainer.toCssHex(),
             land = MaterialTheme.colorScheme.surfaceContainerHigh.toCssHex(),
-            roadMajor = MaterialTheme.colorScheme.surface.toCssHex(),
-            roadMinor = MaterialTheme.colorScheme.surfaceContainerHighest.toCssHex(),
-            roadCasing = MaterialTheme.colorScheme.outline.toCssHex(),
+            roadMajor = MaterialTheme.colorScheme.primary.toCssHex(),
+            roadMinor = MaterialTheme.colorScheme.surface.toCssHex(),
+            roadCasing = MaterialTheme.colorScheme.outlineVariant.toCssHex(),
             building = MaterialTheme.colorScheme.surfaceContainerHighest.toCssHex(),
             label = MaterialTheme.colorScheme.onSurface.toCssHex(),
         )
     }
+
+
+internal val MutedLightMapColors =
+    AccentMapColors(
+        background = "#DCE1E6",
+        water = "#9BB3C5",
+        land = "#CDD7CD",
+        roadMajor = "#FFFFFF",
+        roadMinor = "#ECF0F2",
+        roadCasing = "#B4BEC8",
+        building = "#D0D7DE",
+        label = "#252D37",
+    )
+
+internal val MutedDarkMapColors =
+    AccentMapColors(
+        background = "#20252B",
+        water = "#192837",
+        land = "#242D28",
+        roadMajor = "#9AB2C7",
+        roadMinor = "#36414D",
+        roadCasing = "#181C21",
+        building = "#2B333B",
+        label = "#CBD6E2",
+    )
+
+internal val WarmLightMapColors =
+    AccentMapColors(
+        background = "#EDE8DE",
+        water = "#9EC1DE",
+        land = "#D3DDC5",
+        roadMajor = "#FFF8EE",
+        roadMinor = "#F6F2E8",
+        roadCasing = "#CBBEAC",
+        building = "#DFD8CB",
+        label = "#3A332B",
+    )
+
+internal val WarmDarkMapColors =
+    AccentMapColors(
+        background = "#26221F",
+        water = "#1C2732",
+        land = "#2B2821",
+        roadMajor = "#D4B184",
+        roadMinor = "#403932",
+        roadCasing = "#1D1A17",
+        building = "#332D28",
+        label = "#E0D3C3",
+    )
+
+internal val SlateLightMapColors =
+    AccentMapColors(
+        background = "#C9D2DC",
+        water = "#8DA8C4",
+        land = "#BDC9BE",
+        roadMajor = "#FFFFFF",
+        roadMinor = "#E6ECF2",
+        roadCasing = "#98A8B8",
+        building = "#BAC7D4",
+        label = "#1E293B",
+    )
+
+internal val SlateDarkMapColors =
+    AccentMapColors(
+        background = "#1A202C",
+        water = "#152338",
+        land = "#1E2C28",
+        roadMajor = "#60A5FA",
+        roadMinor = "#2D3748",
+        roadCasing = "#141922",
+        building = "#253041",
+        label = "#E2E8F0",
+    )

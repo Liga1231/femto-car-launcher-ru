@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -28,6 +29,7 @@ import io.github.seijikohara.femto.ui.settings.components.LocationSection
 import io.github.seijikohara.femto.ui.settings.components.MapSection
 import io.github.seijikohara.femto.ui.settings.components.PanelsSection
 import io.github.seijikohara.femto.ui.settings.components.ScreenSection
+import io.github.seijikohara.femto.ui.settings.components.ScenariosSection
 import io.github.seijikohara.femto.ui.settings.components.SettingsCategoryDetail
 import io.github.seijikohara.femto.ui.settings.components.SettingsCategoryList
 import io.github.seijikohara.femto.ui.settings.components.SystemSection
@@ -76,15 +78,24 @@ internal fun SettingsScreen(
     // surface reads as the sheet rather than painting the opaque app background.
     color = MaterialTheme.colorScheme.surfaceContainerLow,
 ) {
-    Column(
+    val isLandscape =
+        androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val screenPaddingHorizontal = if (isLandscape) 16.dp else FemtoDimens.ScreenPadding
+    val screenPaddingTop = if (isLandscape) 4.dp else FemtoDimens.ScreenPadding
+    val screenPaddingBottom = if (isLandscape) 8.dp else FemtoDimens.ScreenPadding
+
+    Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .padding(FemtoDimens.ScreenPadding),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+                .padding(
+                    start = screenPaddingHorizontal,
+                    end = screenPaddingHorizontal,
+                    top = screenPaddingTop,
+                    bottom = screenPaddingBottom,
+                ),
     ) {
-        Header(onBack = onBack)
-
         val entries =
             settingsCategoryEntries(
                 uiState = uiState,
@@ -110,13 +121,14 @@ internal fun SettingsScreen(
         // must wait.
         val badged = if (uiState.updates.updateOffered) setOf(SettingsCategoryId.UPDATES) else emptySet()
 
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             if (maxWidth >= SettingsWidePaneBreakpoint) {
                 SettingsWidePane(
                     entries = entries,
                     selectedId = selectedId,
                     onSelect = { selectedId = it },
                     onAction = onAction,
+                    onBack = onBack,
                     badged = badged,
                 )
             } else {
@@ -129,7 +141,8 @@ internal fun SettingsScreen(
                         selectedId = it
                         showDetail = true
                     },
-                    onBack = { showDetail = false },
+                    onBackToList = { showDetail = false },
+                    onBackToHome = onBack,
                     onAction = onAction,
                 )
             }
@@ -147,18 +160,25 @@ private fun SettingsWidePane(
     selectedId: SettingsCategoryId,
     onSelect: (SettingsCategoryId) -> Unit,
     onAction: (SettingsAction) -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     badged: Set<SettingsCategoryId> = emptySet(),
 ) = Row(
     modifier = modifier.fillMaxSize(),
-    horizontalArrangement = Arrangement.spacedBy(FemtoDimens.ScreenPadding),
+    horizontalArrangement = Arrangement.spacedBy(16.dp),
 ) {
-    SettingsCategoryList(
-        selectedId = selectedId,
-        onSelect = onSelect,
+    Column(
         modifier = Modifier.width(SettingsRailWidth).fillMaxHeight(),
-        badged = badged,
-    )
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Header(onBack = onBack)
+        SettingsCategoryList(
+            selectedId = selectedId,
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            badged = badged,
+        )
+    }
     val selected = entries.first { it.id == selectedId }
     SettingsCategoryDetail(
         title = stringResource(selected.id.titleRes),
@@ -177,7 +197,8 @@ private fun SettingsNarrowPane(
     selectedId: SettingsCategoryId,
     showDetail: Boolean,
     onSelect: (SettingsCategoryId) -> Unit,
-    onBack: () -> Unit,
+    onBackToList: () -> Unit,
+    onBackToHome: () -> Unit,
     onAction: (SettingsAction) -> Unit,
     modifier: Modifier = Modifier,
     badged: Set<SettingsCategoryId> = emptySet(),
@@ -186,18 +207,24 @@ private fun SettingsNarrowPane(
         val selected = entries.first { it.id == selectedId }
         SettingsCategoryDetail(
             title = stringResource(selected.id.titleRes),
-            onBack = onBack,
+            onBack = onBackToList,
             onReset = selected.id.sectionId?.let { sectionId -> { onAction(SettingsAction.ResetSection(sectionId)) } },
             content = selected.content,
             modifier = Modifier.fillMaxSize(),
         )
     } else {
-        SettingsCategoryList(
-            selectedId = selectedId,
-            onSelect = onSelect,
+        Column(
             modifier = Modifier.fillMaxSize(),
-            badged = badged,
-        )
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Header(onBack = onBackToHome)
+            SettingsCategoryList(
+                selectedId = selectedId,
+                onSelect = onSelect,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                badged = badged,
+            )
+        }
     }
 }
 
@@ -230,6 +257,9 @@ private fun settingsCategoryEntries(
         },
         SettingsCategoryEntry(SettingsCategoryId.SCREEN) {
             ScreenSection(uiState = uiState, onAction = onAction)
+        },
+        SettingsCategoryEntry(SettingsCategoryId.SCENARIOS) {
+            ScenariosSection(uiState = uiState, onAction = onAction)
         },
         SettingsCategoryEntry(SettingsCategoryId.UNITS) {
             UnitsSection(uiState = uiState, onAction = onAction)

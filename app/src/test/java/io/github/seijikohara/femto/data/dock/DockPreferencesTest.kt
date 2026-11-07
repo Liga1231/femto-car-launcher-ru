@@ -18,13 +18,13 @@ import kotlin.test.assertEquals
 @Config(sdk = [33])
 class DockPreferencesTest {
     @Test
-    fun `an empty store reads every id in its enum's declared order with nothing hidden`() =
+    fun `an empty store reads every id in its enum's declared order with default hidden`() =
         runTest {
             val store = DockPreferences(ApplicationProvider.getApplicationContext())
             store.resetToDefaults()
 
             assertEquals(DockNavId.entries, store.navOrder.first())
-            assertEquals(emptySet(), store.navHidden.first())
+            assertEquals(DEFAULT_NAV_HIDDEN, store.navHidden.first())
             assertEquals(DockStatusId.entries, store.statusOrder.first())
             assertEquals(emptySet(), store.statusHidden.first())
         }
@@ -47,16 +47,16 @@ class DockPreferencesTest {
         }
 
     @Test
-    fun `toggleNavHidden hides then restores an id`() =
+    fun `toggleNavHidden unhides then restores an id`() =
         runTest {
             val store = DockPreferences(ApplicationProvider.getApplicationContext())
             store.resetToDefaults()
 
             store.toggleNavHidden(DockNavId.MUSIC)
-            assertEquals(setOf(DockNavId.MUSIC), store.navHidden.first())
+            assertEquals(DEFAULT_NAV_HIDDEN - DockNavId.MUSIC, store.navHidden.first())
 
             store.toggleNavHidden(DockNavId.MUSIC)
-            assertEquals(emptySet(), store.navHidden.first())
+            assertEquals(DEFAULT_NAV_HIDDEN, store.navHidden.first())
         }
 
     @Test
@@ -67,7 +67,9 @@ class DockPreferencesTest {
 
             // Hide every id but one; then attempt to hide the survivor.
             val survivor = DockNavId.APPS
-            DockNavId.entries.filter { it != survivor }.forEach { store.toggleNavHidden(it) }
+            DockNavId.entries.filter { it != survivor }.forEach {
+                if (it !in store.navHidden.first()) store.toggleNavHidden(it)
+            }
             store.toggleNavHidden(survivor)
 
             // The survivor stays visible — at least one id always remains.
@@ -79,6 +81,8 @@ class DockPreferencesTest {
         runTest {
             val store = DockPreferences(ApplicationProvider.getApplicationContext())
             store.resetToDefaults()
+            // Make all visible to test adjacent neighbor swap
+            DEFAULT_NAV_HIDDEN.forEach { store.toggleNavHidden(it) }
 
             store.moveNav(DockNavId.MUSIC, 1)
 
@@ -112,6 +116,8 @@ class DockPreferencesTest {
         runTest {
             val store = DockPreferences(ApplicationProvider.getApplicationContext())
             store.resetToDefaults()
+            // Start from all visible, then hide APPS
+            DEFAULT_NAV_HIDDEN.forEach { store.toggleNavHidden(it) }
             store.toggleNavHidden(DockNavId.APPS)
 
             // Visible order is PHONE, MUSIC, NAVIGATION, ...; PHONE's right-hand
@@ -246,7 +252,7 @@ class DockPreferencesTest {
             store.resetToDefaults()
 
             assertEquals(DockNavId.entries, store.navOrder.first())
-            assertEquals(emptySet(), store.navHidden.first())
+            assertEquals(DEFAULT_NAV_HIDDEN, store.navHidden.first())
             assertEquals(DockStatusId.entries, store.statusOrder.first())
             assertEquals(emptySet(), store.statusHidden.first())
         }

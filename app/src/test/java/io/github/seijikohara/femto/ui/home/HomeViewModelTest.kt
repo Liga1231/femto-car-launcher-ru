@@ -449,7 +449,7 @@ class HomeViewModelTest {
     fun `onAction Music forwards the command to sendMusicCommand and emits no event`() =
         runTest {
             val received = mutableListOf<MusicCommand>()
-            val viewModel = stubViewModel(sendMusicCommand = { received += it })
+            val viewModel = stubViewModel(sendMusicCommand = { received += it; true })
             viewModel.events.test {
                 viewModel.onAction(HomeAction.Music(MusicCommand.PlayPause))
                 viewModel.onAction(HomeAction.Music(MusicCommand.SkipNext))
@@ -1042,7 +1042,7 @@ class HomeViewModelTest {
     }
 
     private fun stubViewModel(
-        sendMusicCommand: (MusicCommand) -> Unit = {},
+        sendMusicCommand: (MusicCommand) -> Boolean = { true },
         resumeLastMusicSession: () -> Unit = {},
         resetTrip: () -> Unit = {},
         resolveMusicSourceComponent: (String) -> ComponentName? = { null },

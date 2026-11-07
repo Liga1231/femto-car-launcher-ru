@@ -87,7 +87,9 @@
                 background: var(--marker-color, #3367d6);
                 border: 1.5px solid var(--marker-color, #3367d6);
                 box-sizing: border-box;
-                animation: marker-ripple 2.8s linear infinite;
+                opacity: 0;
+                /* One-shot, not infinite: a looping ripple forces the WebView to repaint every frame even parked, starving the UI thread and janking the launcher's scroll. */
+                animation: marker-ripple 2.8s linear 1;
             }
             @keyframes marker-ripple {
                 0% {

@@ -202,7 +202,8 @@ internal fun SpeedOverlay(
                     } else {
                         Modifier
                     },
-                ).glassChrome(MaterialTheme.shapes.large, hazeState, glassConfig)
+                )
+                // No glass card by request — the speed is a bare numeral on the map.
                 .padding(
                     horizontal = FemtoDimens.OverlayPaddingHorizontal,
                     vertical = FemtoDimens.OverlayPaddingVertical,
@@ -221,16 +222,7 @@ internal fun SpeedOverlay(
             tier = motionTier,
             onReset = onReset,
         )
-        // Always render the address row (even with no fix / unresolved address) so
-        // the overlay keeps a stable height instead of collapsing then growing when
-        // the address arrives. The 5 dp gaps keep the metric row's breathing room in
-        // step with the address row's.
-        Box(modifier = Modifier.height(5.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = FemtoDimens.DividerAlpha))
-        Box(modifier = Modifier.height(5.dp))
-        ZeroIntrinsicWidth {
-            AddressRow(text = shortAddress.ifBlank { NO_ADDRESS_PLACEHOLDER }, altitudeM = altitudeM)
-        }
+        // Address row removed by request: the overlay is a bare speed numeral now.
     }
 }
 
@@ -248,30 +240,11 @@ private fun MetricRow(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
 ) {
+    // By request the overlay shows the live speed numeral only — the trip
+    // metrics (distance / average / start / reset) are dropped. The distance,
+    // avgSpeed, sinceTimestamp and onReset parameters stay for the callers but
+    // are no longer rendered.
     NowMetric(value = currentSpeed, unit = speedUnitLabel, tier = tier)
-    Separator()
-    SecondaryMetric(
-        key = stringResource(R.string.speed_metric_distance),
-        value = "%.1f".format(distance),
-        unit = distanceUnitLabel,
-        // Formatted through the same "%.1f" as the live value so the locale's
-        // decimal separator is measured, not assumed.
-        widthSample = "%.1f".format(DISTANCE_WIDTH_SAMPLE),
-        tier = tier,
-    )
-    Separator()
-    SecondaryMetric(
-        key = stringResource(R.string.speed_metric_avg),
-        value = "$avgSpeed",
-        unit = speedUnitLabel,
-        widthSample = THREE_DIGIT_WIDTH_SAMPLE,
-        tier = tier,
-    )
-    Separator()
-    if (sinceTimestamp != null) {
-        SinceCell(timestamp = sinceTimestamp)
-    }
-    ResetButton(onReset = onReset)
 }
 
 @Composable

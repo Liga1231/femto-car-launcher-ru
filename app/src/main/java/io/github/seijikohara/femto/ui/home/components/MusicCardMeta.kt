@@ -3,6 +3,7 @@ package io.github.seijikohara.femto.ui.home.components
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -63,24 +64,47 @@ internal fun AlbumArt(
     nowPlaying: NowPlaying,
     modifier: Modifier = Modifier,
     onTap: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     motionTier: MotionTier = MotionTier.STANDARD,
 ) {
-    // Optional tap: on the dashboard card the art is the expand-to-panel
-    // affordance (the TransportButton idiom: clickable + explicit content
-    // description); in the panel itself the art is inert, so no tap modifier
-    // and no misleading action semantics.
-    val tapModifier =
-        onTap?.let { tap ->
-            val label = stringResource(R.string.music_expand_player)
-            Modifier
-                .clickable(onClick = tap)
-                .semantics { contentDescription = label }
-        } ?: Modifier
+    // Optional tap/long-press: on the dashboard card the art can be tapped (play/pause)
+    // and long-pressed (expand to panel).
+    val expandLabel = stringResource(R.string.music_expand_player)
+    val gestureModifier =
+        when {
+            onTap != null && onLongClick != null -> {
+                Modifier
+                    .combinedClickable(
+                        onClick = onTap,
+                        onLongClick = onLongClick,
+                        onLongClickLabel = expandLabel,
+                    ).semantics { contentDescription = expandLabel }
+            }
+
+            onTap != null -> {
+                Modifier
+                    .clickable(onClick = onTap)
+                    .semantics { contentDescription = expandLabel }
+            }
+
+            onLongClick != null -> {
+                Modifier
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = onLongClick,
+                        onLongClickLabel = expandLabel,
+                    ).semantics { contentDescription = expandLabel }
+            }
+
+            else -> {
+                Modifier
+            }
+        }
     Box(
         modifier =
             modifier
                 .clip(MaterialTheme.shapes.medium)
-                .then(tapModifier)
+                .then(gestureModifier)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
     ) {
@@ -196,6 +220,7 @@ internal fun MusicMetaAndProgress(
     playbackSpeed: Float,
     modifier: Modifier = Modifier,
     showAlbum: Boolean = true,
+    showEyebrow: Boolean = true,
     // When non-null, the source eyebrow row becomes a tap-to-expand affordance —
     // the card's entry to the full-screen player, kept reachable even when the
     // album art (the other expand affordance) is hidden. The calendar / weather
@@ -218,7 +243,11 @@ internal fun MusicMetaAndProgress(
     Layout(
         modifier = modifier.fillMaxWidth(),
         content = {
-            EyebrowLine(source = source, sourceIcon = sourceIcon, onExpand = onExpand)
+            if (showEyebrow) {
+                EyebrowLine(source = source, sourceIcon = sourceIcon, onExpand = onExpand)
+            } else {
+                Spacer(modifier = Modifier.size(0.dp))
+            }
             MetaLine(
                 text = title,
                 style = titleStyle,
@@ -281,7 +310,7 @@ internal fun MusicMetaAndProgress(
         val optionalPriority =
             buildList {
                 add(ARTIST_SLOT)
-                add(EYEBROW_SLOT)
+                if (showEyebrow) add(EYEBROW_SLOT)
                 if (showAlbum) add(ALBUM_SLOT)
             }
         for (candidate in optionalPriority) {

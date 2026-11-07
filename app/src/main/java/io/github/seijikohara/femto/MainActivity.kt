@@ -1,6 +1,7 @@
 package io.github.seijikohara.femto
 
 import android.Manifest
+import android.content.Context
 import android.app.SearchManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -11,7 +12,9 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.format.DateFormat
 import android.util.Log
+import android.view.MotionEvent
 import android.view.WindowManager
+import kotlinx.coroutines.Job
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -21,6 +24,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import io.github.seijikohara.femto.data.display.MapStyleSetting
+import io.github.seijikohara.femto.data.system.RootShell
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.time.LocalTime
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -28,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
@@ -81,6 +92,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : ComponentActivity() {
@@ -94,6 +106,27 @@ class MainActivity : ComponentActivity() {
     // LaunchedEffect only fires on a setting change, not on a focus regain, so the
     // bars would otherwise stay visible after returning from an external app.
     private var fullscreenSetting = FullscreenSetting.OFF
+
+    private var trayOpenedTimestamp: Long = 0L
+
+    private fun scheduleTrayClose(delayMs: Long = 3000L) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            delay(delayMs)
+            RootShell.run("cmd statusbar collapse")
+            withContext(Dispatchers.Main) {
+                if (fullscreenSetting == FullscreenSetting.ON) {
+                    applyFullscreen(FullscreenSetting.ON)
+                }
+            }
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (ev?.action == MotionEvent.ACTION_DOWN || ev?.action == MotionEvent.ACTION_UP) {
+            scheduleTrayClose(3000L)
+        }
+        return super.dispatchTouchEvent(ev)
+    }
 
     // Backs the splash keep-on-screen condition: stays false while the settings
     // gate in setContent renders nothing, so the splash covers those empty frames
@@ -134,6 +167,12 @@ class MainActivity : ComponentActivity() {
         }
         enableEmulatorMapRendering()
         enableEdgeToEdge()
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
         requestRuntimePermissions()
         observeBackgroundRanging()
         // Keep the cached fullscreen choice in sync so onWindowFocusChanged can
@@ -143,6 +182,24 @@ class MainActivity : ComponentActivity() {
                 .map { it.fullscreen }
                 .distinctUntilChanged()
                 .collect { fullscreenSetting = it }
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    delay(500L)
+                    val now = System.currentTimeMillis()
+                    val opened = trayOpenedTimestamp
+                    if (opened > 0 && now - opened >= 3000L) {
+                        trayOpenedTimestamp = 0L
+                        RootShell.run("cmd statusbar collapse")
+                        withContext(Dispatchers.Main) {
+                            if (fullscreenSetting == FullscreenSetting.ON) {
+                                applyFullscreen(FullscreenSetting.ON)
+                            }
+                        }
+                    }
+                }
+            }
         }
         setContent {
             // User display settings override the locale/system defaults; the theme
@@ -201,11 +258,34 @@ class MainActivity : ComponentActivity() {
             // let the splash lift. SideEffect so only an applied composition
             // publishes readiness; one-way, never reset.
             SideEffect { settingsReady = true }
+            var currentHour by remember { mutableIntStateOf(LocalTime.now().hour) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(10_000L)
+                    val hour = LocalTime.now().hour
+                    if (hour != currentHour) {
+                        currentHour = hour
+                    }
+                }
+            }
+
             val darkTheme =
-                when (settings.themeMode) {
-                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
-                    ThemeMode.LIGHT -> false
-                    ThemeMode.DARK -> true
+                if (settings.themeScheduleEnabled) {
+                    val lightHour = settings.themeScheduleLightHour
+                    val darkHour = settings.themeScheduleDarkHour
+                    val isDay =
+                        if (lightHour < darkHour) {
+                            currentHour in lightHour until darkHour
+                        } else {
+                            currentHour >= lightHour || currentHour < darkHour
+                        }
+                    !isDay
+                } else {
+                    when (settings.themeMode) {
+                        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                        ThemeMode.LIGHT -> false
+                        ThemeMode.DARK -> true
+                    }
                 }
             // Drive the system bars from the persisted fullscreen choice. This
             // fires only on a setting change; onWindowFocusChanged handles the
@@ -262,7 +342,12 @@ class MainActivity : ComponentActivity() {
                     temperatureUnit = settings.temperatureUnit.resolved(),
                     mapConfig =
                         MapConfig(
-                            style = settings.mapStyle,
+                            style =
+                                if (settings.themeScheduleEnabled) {
+                                    if (darkTheme) MapStyleSetting.DARK else MapStyleSetting.LIGHT
+                                } else {
+                                    settings.mapStyle
+                                },
                             schemeLight = settings.mapSchemeLight,
                             schemeDark = settings.mapSchemeDark,
                             tiltDeg = settings.mapTiltDeg,
@@ -288,6 +373,7 @@ class MainActivity : ComponentActivity() {
                         ),
                     calendarDateOnly = settings.calendarDateOnly,
                     musicShowAlbum = settings.musicShowAlbum,
+                    musicCardHeight = settings.musicCardHeight,
                     musicShowArt = settings.musicShowArt,
                     motionTier = settings.motionTier,
                     glassConfig =
@@ -374,17 +460,41 @@ class MainActivity : ComponentActivity() {
     // the "Updated to …" notification has done its job. onResume, not onCreate,
     // because a return that reuses the running launcher resumes it without
     // creating it; the call is one cancel, so a cold start stays lean.
+    override fun onStart() {
+        super.onStart()
+        lifecycleScope.launch(Dispatchers.IO) {
+            RootShell.lockStatusBar(true)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         dismissUpdateNotification()
+        lifecycleScope.launch(Dispatchers.IO) {
+            RootShell.lockStatusBar(true)
+        }
+        if (fullscreenSetting == FullscreenSetting.ON) {
+            applyFullscreen(FullscreenSetting.ON)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        trayOpenedTimestamp = 0L
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        // Returning from another Activity (e.g. an external app) restores the
-        // system bars even when fullscreen is on. Re-hide them once focus returns.
-        if (hasFocus && fullscreenSetting == FullscreenSetting.ON) {
-            applyFullscreen(FullscreenSetting.ON)
+        if (hasFocus) {
+            trayOpenedTimestamp = 0L
+            if (fullscreenSetting == FullscreenSetting.ON) {
+                applyFullscreen(FullscreenSetting.ON)
+            }
+        } else {
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                trayOpenedTimestamp = System.currentTimeMillis()
+                scheduleTrayClose(3000L)
+            }
         }
     }
 
@@ -514,6 +624,10 @@ class MainActivity : ComponentActivity() {
             HomeEvent.ResetDock -> {
                 lifecycleScope.launch { dockPreferences.resetToDefaults() }
             }
+
+            is HomeEvent.PlayMusicVibe -> {
+                launchMusicVibe(event.uriString)
+            }
         }
     }
 
@@ -526,8 +640,14 @@ class MainActivity : ComponentActivity() {
      */
     private fun launchSystemAssistant(): Boolean =
         assistantIntent(AssistantOption.ASSISTANT).let { intent ->
-            packageManager.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(0)) != null &&
-                tryStartActivity(intent)
+            val resolves =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.resolveActivity(intent, PackageManager.ResolveInfoFlags.of(0)) != null
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.resolveActivity(intent, 0) != null
+                }
+            resolves && tryStartActivity(intent)
         }
 
     // Fire the intent matching the user's elected assistant option. No package is
@@ -586,6 +706,24 @@ class MainActivity : ComponentActivity() {
             Intent(Intent.ACTION_VIEW, url.toUri())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         tryStartActivity(intent)
+    }
+
+    private fun launchMusicVibe(uriString: String) {
+        // Let YM open and apply the seed via its UrlActivity router; returning to the launcher too early interrupts Rotor and resets the wave to default.
+        val intent =
+            Intent(Intent.ACTION_VIEW, uriString.toUri()).apply {
+                setPackage("ru.yandex.music")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        tryStartActivity(intent)
+        lifecycleScope.launch {
+            delay(2_500L)
+            val returnHome =
+                Intent(this@MainActivity, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
+            tryStartActivity(returnHome)
+        }
     }
 
     private fun launchAppCategory(category: String) {

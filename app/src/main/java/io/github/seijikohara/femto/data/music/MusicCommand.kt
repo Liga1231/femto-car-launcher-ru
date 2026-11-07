@@ -1,5 +1,7 @@
 package io.github.seijikohara.femto.data.music
 
+import android.net.Uri
+
 /**
  * Transport commands the dashboard can dispatch to the music session.
  *
@@ -27,5 +29,12 @@ internal sealed interface MusicCommand {
     /** Play a specific queue entry; only offered when [NowPlaying.canSkipToQueueItem]. */
     data class SkipToQueueItem(
         val queueItemId: Long,
+    ) : MusicCommand
+
+    /** Play a specific vibe / wave mood directly via MediaSession transport controls. */
+    data class PlayVibe(
+        val uri: Uri,
+        val stationId: String,
+        val seeds: String? = null,
     ) : MusicCommand
 }

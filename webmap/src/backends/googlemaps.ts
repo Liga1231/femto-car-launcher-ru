@@ -197,11 +197,19 @@ interface GMWebGLDrawOptions {
 interface GMWebGLOverlayView {
     setMap(map: GMMap | null): void;
 }
+interface GMPolyline {
+    setMap(map: GMMap | null): void;
+}
+interface GMMarker {
+    setMap(map: GMMap | null): void;
+}
 interface GMMapsLibrary {
     Map: new (el: HTMLElement, opts: Record<string, unknown>) => GMMap;
     OverlayView: new () => GMOverlayView;
     WebGLOverlayView: new () => GMWebGLOverlayView;
     TrafficLayer: new () => GMTrafficLayer;
+    Polyline?: new (opts: Record<string, unknown>) => GMPolyline;
+    Marker?: new (opts: Record<string, unknown>) => GMMarker;
 }
 
 // Maps the GoogleMapType enum name strings from the Android bridge to the
@@ -1343,11 +1351,91 @@ export async function init(reporter: PageReporter, pending: PendingBridgeCalls):
         window.dispatchEvent(new Event("resize"));
     };
 
+    const routeDisplay = {
+        polyline: null as GMPolyline | null,
+        marker: null as GMMarker | null,
+    };
+
+    function clearGoogleRoute(): void {
+        if (routeDisplay.polyline) {
+            routeDisplay.polyline.setMap(null);
+            routeDisplay.polyline = null;
+        }
+        if (routeDisplay.marker) {
+            routeDisplay.marker.setMap(null);
+            routeDisplay.marker = null;
+        }
+    }
+
+    function applyGoogleRoute(geojsonStr: string | null): void {
+        clearGoogleRoute();
+        if (!geojsonStr) return;
+        try {
+            const parsed = JSON.parse(geojsonStr);
+            const coordinates: Array<{ lat: number; lng: number }> = [];
+            const destCoord = { value: null as { lat: number; lng: number } | null };
+            if (parsed.type === "FeatureCollection" && Array.isArray(parsed.features)) {
+                for (const f of parsed.features) {
+                    if (
+                        f.geometry?.type === "LineString" &&
+                        Array.isArray(f.geometry.coordinates)
+                    ) {
+                        for (const pt of f.geometry.coordinates) {
+                            coordinates.push({ lng: pt[0], lat: pt[1] });
+                        }
+                    } else if (
+                        f.geometry?.type === "Point" &&
+                        Array.isArray(f.geometry.coordinates)
+                    ) {
+                        destCoord.value = {
+                            lng: f.geometry.coordinates[0],
+                            lat: f.geometry.coordinates[1],
+                        };
+                    }
+                }
+            } else if (parsed.type === "LineString" && Array.isArray(parsed.coordinates)) {
+                for (const pt of parsed.coordinates) {
+                    coordinates.push({ lng: pt[0], lat: pt[1] });
+                }
+            }
+            if (coordinates.length > 0) {
+                if (mapsLib.Polyline) {
+                    routeDisplay.polyline = new mapsLib.Polyline({
+                        path: coordinates,
+                        geodesic: true,
+                        strokeColor: "#3B82F6",
+                        strokeOpacity: 0.9,
+                        strokeWeight: 6,
+                        map: liveMap,
+                    });
+                }
+                const dest = destCoord.value ?? coordinates[coordinates.length - 1];
+                if (dest && mapsLib.Marker) {
+                    routeDisplay.marker = new mapsLib.Marker({
+                        position: dest,
+                        map: liveMap,
+                        title: "Destination",
+                    });
+                }
+            }
+        } catch (e) {
+            log(`google route error: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }
+
+    window.setRoute = (geojson) => {
+        applyGoogleRoute(geojson);
+    };
+    window.clearRoute = () => {
+        clearGoogleRoute();
+    };
+
     // Replay pending calls the boot stubs recorded before this async init
     // completed. Order mirrors the host's push sequence.
     if (pending.setGoogleMapsOptions) window.setGoogleMapsOptions(...pending.setGoogleMapsOptions);
     if (pending.setNorthUp != null) window.setNorthUp(pending.setNorthUp);
     if (pending.setFollow != null) window.setFollow(pending.setFollow);
     if (pending.updateCamera) window.updateCamera(...pending.updateCamera);
+    if (pending.setRoute !== undefined) window.setRoute(pending.setRoute);
     if (pending.onHostResume) window.onHostResume();
 }

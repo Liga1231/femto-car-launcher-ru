@@ -9,6 +9,7 @@ import android.media.session.MediaController
 import android.media.session.MediaSession
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -169,12 +170,25 @@ internal class MusicSessionRepository(
      * which case the dashboard surfaces a "Connect music player" CTA
      * via [io.github.seijikohara.femto.ui.home.HomeAction.ConnectMusicPlayer].
      */
-    fun send(command: MusicCommand) {
-        val controller =
+    fun send(command: MusicCommand): Boolean {
+        val allSessions =
             runCatching {
-                selectPrimaryController(sessionManager.getActiveSessions(componentName))
+                sessionManager.getActiveSessions(componentName)
             }.onFailure { Log.w(TAG, "dropping $command: active-session query failed", it) }
-                .getOrNull() ?: return
+                .getOrNull()
+                .orEmpty()
+
+        val controller =
+            if (command is MusicCommand.PlayVibe) {
+                allSessions.firstOrNull { it.packageName == "ru.yandex.music" }
+                    ?: selectPrimaryController(allSessions)
+            } else {
+                selectPrimaryController(allSessions)
+            } ?: run {
+                Log.w(TAG, "dropping $command: no active controller found")
+                return false
+            }
+
         val transport = controller.transportControls
         when (command) {
             MusicCommand.PlayPause -> {
@@ -218,7 +232,21 @@ internal class MusicSessionRepository(
                     ?.takeIf { media3PackageName == controller.packageName }
                     ?.let { it.setRepeatMode(nextRepeatMode(repeatModeOf(it.repeatMode)).toPlayerMode()) }
             }
+
+            is MusicCommand.PlayVibe -> {
+                Log.d(TAG, "PlayVibe on ${controller.packageName}: uri=${command.uri}, stationId=${command.stationId}, seeds=${command.seeds}")
+                val extras = Bundle().apply {
+                    putString("stationId", command.stationId)
+                    command.seeds?.let {
+                        putString("seeds", it)
+                        putStringArrayList("wave.seeds", arrayListOf(it))
+                    }
+                    putBoolean("open.player", false)
+                }
+                transport.playFromUri(command.uri, extras)
+            }
         }
+        return true
     }
 
     /**
@@ -454,6 +482,7 @@ internal class MusicSessionRepository(
                                 entries = controller.queueEntries(),
                                 activeQueueItemId = controller.playbackState?.activeQueueItemId ?: -1L,
                             ),
+                        queueTitle = controller.queueTitle?.toString(),
                     )
                 }
             }
@@ -616,6 +645,7 @@ internal fun nowPlayingOf(
     shuffleOn: Boolean = false,
     repeatMode: RepeatMode = RepeatMode.NONE,
     queue: List<QueueEntry> = emptyList(),
+    queueTitle: String? = null,
 ): NowPlaying =
     (playbackState?.actions ?: 0L).let { actions ->
         NowPlaying(
@@ -645,7 +675,9 @@ internal fun nowPlayingOf(
             packageName = packageName,
             playbackSpeed = playbackState?.playbackSpeed ?: 1f,
             positionUpdateTimeMs = playbackState?.lastPositionUpdateTime ?: 0L,
-            canSeek = (actions and PlaybackState.ACTION_SEEK_TO) != 0L,
+            canSeek =
+                (actions and PlaybackState.ACTION_SEEK_TO) != 0L ||
+                    metadata.getLong(MediaMetadata.METADATA_KEY_DURATION) > 0L,
             // Shuffle / repeat capability is a media3-controller fact (command
             // availability), not an action bit — supplied by the repository once
             // the async controller connects; false until then.
@@ -655,5 +687,6 @@ internal fun nowPlayingOf(
             shuffleOn = shuffleOn,
             repeatMode = repeatMode,
             queue = queue,
+            queueTitle = queueTitle,
         )
     }

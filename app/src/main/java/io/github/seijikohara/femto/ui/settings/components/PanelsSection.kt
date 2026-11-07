@@ -35,6 +35,7 @@ import com.composables.icons.lucide.FolderOpen
 import com.composables.icons.lucide.Lucide
 import io.github.seijikohara.femto.R
 import io.github.seijikohara.femto.data.calendar.CalendarInfo
+import io.github.seijikohara.femto.data.display.MusicCardHeight
 import io.github.seijikohara.femto.ui.settings.SettingsAction
 import io.github.seijikohara.femto.ui.settings.SettingsUiState
 import io.github.seijikohara.femto.ui.settings.VideoFileSummary
@@ -108,6 +109,17 @@ internal fun PanelsSection(
         checked = uiState.musicShowArt,
         onCheckedChange = { onAction(SettingsAction.SetMusicShowArt(it)) },
         summary = stringResource(R.string.settings_panel_music_art_desc),
+    )
+    ChoiceRow(
+        title = stringResource(R.string.settings_group_music_height),
+        options =
+            listOf(
+                MusicCardHeight.NORMAL to stringResource(R.string.settings_music_height_normal),
+                MusicCardHeight.TALL to stringResource(R.string.settings_music_height_tall),
+                MusicCardHeight.EXTRA to stringResource(R.string.settings_music_height_extra),
+            ),
+        selected = uiState.musicCardHeight,
+        onSelect = { onAction(SettingsAction.SetMusicCardHeight(it)) },
     )
     SwitchRow(
         title = stringResource(R.string.settings_group_panel_video),

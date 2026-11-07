@@ -58,6 +58,8 @@ declare global {
         onHostResume: () => void;
         setFollow: (follow: boolean) => void;
         setNorthUp: (enabled: boolean) => void;
+        setRoute: (geojson: string | null) => void;
+        clearRoute: () => void;
     }
 }
 
@@ -88,7 +90,8 @@ export type MapEventKind =
     | "bearing"
     | "frames"
     | "tile"
-    | "lens";
+    | "lens"
+    | "routeSelect";
 
 // Function-typed properties rather than methods: the backends destructure
 // the reporter and hand its functions around (`const { log, report } =
@@ -261,6 +264,7 @@ export interface PendingBridgeCalls {
     setFollow: boolean | null;
     setNorthUp: boolean | null;
     onHostResume: boolean;
+    setRoute?: string | null;
 }
 
 export function installPendingStubs(): PendingBridgeCalls {
@@ -272,6 +276,7 @@ export function installPendingStubs(): PendingBridgeCalls {
         setFollow: null,
         setNorthUp: null,
         onHostResume: false,
+        setRoute: undefined,
     };
     window.updateCamera = (...a) => {
         pending.updateCamera = a;
@@ -293,6 +298,12 @@ export function installPendingStubs(): PendingBridgeCalls {
     };
     window.onHostResume = () => {
         pending.onHostResume = true;
+    };
+    window.setRoute = (geojson) => {
+        pending.setRoute = geojson;
+    };
+    window.clearRoute = () => {
+        pending.setRoute = null;
     };
     return pending;
 }

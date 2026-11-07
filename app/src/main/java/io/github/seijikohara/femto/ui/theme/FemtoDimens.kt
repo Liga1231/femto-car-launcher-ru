@@ -133,10 +133,10 @@ object FemtoDimens {
     val MusicMetaMinWidth = 150.dp
 
     /** Skip-previous / skip-next transport button hit area. */
-    val MusicTransportButton = 64.dp
+    val MusicTransportButton = 84.dp
 
     /** Centre play / pause button — slightly wider so it reads as primary. */
-    val MusicPlayButton = 72.dp
+    val MusicPlayButton = 100.dp
 
     /**
      * Gap between the transport buttons (skip-previous / play-pause /
@@ -277,7 +277,7 @@ object FemtoDimens {
      * scrolling, and the detail pane wants to show more than a couple of rows
      * before its own scroll kicks in.
      */
-    val SettingsSheetHeightFraction = 0.92f
+    val SettingsSheetHeightFraction = 1f
 
     /**
      * Fraction of the Now-Playing panel's height reserved for the upcoming-queue

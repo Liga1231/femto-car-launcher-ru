@@ -149,12 +149,15 @@ internal fun WebMapView(
     onBearingChange: (Float) -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     attributionBottomInset: Dp = 0.dp,
+    navigationRouteGeoJson: String? = null,
+    onSelectRoute: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // The bridge object below is registered once per WebView instance and would
     // otherwise capture the first composition's lambdas forever.
     val currentOnFollowChange by rememberUpdatedState(onFollowChange)
     val currentOnBearingChange by rememberUpdatedState(onBearingChange)
+    val currentOnSelectRoute by rememberUpdatedState(onSelectRoute)
     val bearingHolder = remember { floatArrayOf(0f) }
     val isDark =
         when (mapConfig.style) {
@@ -176,7 +179,9 @@ internal fun WebMapView(
     // scheme change pushes into the live page instead of rebuilding the WebView —
     // so the getter must see the current scheme, not the one captured when the
     // bridge object was created.
-    val currentStyleUrl by rememberUpdatedState(styleUrl(styleRef))
+    val accentColors = accentMapColors(isDark)
+    val effectiveColors = (styleRef as? MapStyleRef.Accent)?.customColors ?: accentColors
+    val currentStyleUrl by rememberUpdatedState(styleUrl(styleRef, effectiveColors.hashCode()))
 
     // Only the active backend's credential can affect the loaded page, so an edit
     // to the inactive backend's stored key must not rebuild the WebView — editing a
@@ -714,6 +719,13 @@ internal fun WebMapView(
                                 // fetch): log only. The removed auto-downgrade
                                 // misfired on exactly such ambiguous signals —
                                 // never UI here.
+                                "routeSelect" -> {
+                                    val idx = detail.toIntOrNull() ?: 0
+                                    mainHandler.post {
+                                        currentOnSelectRoute?.invoke(idx)
+                                    }
+                                }
+
                                 "error" -> {
                                     Log.w(TAG, "LIVE map transient error: $detail")
                                 }
@@ -776,7 +788,7 @@ internal fun WebMapView(
     // the user's accent.
     val markerColor = MaterialTheme.colorScheme.primary.toCssHex()
 
-    val accentColors = accentMapColors(isDark)
+    // accentColors resolved above
 
     // Each effect keys on [pageReady] (so it fires once the page is ready) and on
     // [webView] (so a rebuilt WebView gets the state re-pushed), then pushes the
@@ -804,11 +816,21 @@ internal fun WebMapView(
             null,
         )
     }
+
+    LaunchedEffect(webView, pageReady.value, navigationRouteGeoJson) {
+        if (!pageReady.value) return@LaunchedEffect
+        if (!navigationRouteGeoJson.isNullOrBlank()) {
+            val escaped = navigationRouteGeoJson.replace("\\", "\\\\").replace("'", "\\'")
+            webView.evaluateJavascript("window.setRoute && setRoute('$escaped')", null)
+        } else {
+            webView.evaluateJavascript("window.clearRoute && clearRoute()", null)
+        }
+    }
     // OSM backend: push the MapLibre style URL + optional accent recolor palette.
     // The Google Maps backend picks its style through setGoogleMapsOptions below
     // and does not use setStyleUrl or the OSM accent colors.
     if (mapConfig.backend == MapBackend.OSM) {
-        LaunchedEffect(webView, pageReady.value, styleRef, accentColors) {
+        LaunchedEffect(webView, pageReady.value, styleRef, effectiveColors) {
             if (!pageReady.value) return@LaunchedEffect
             // The theme cross-fade animates MaterialTheme colours, so accentColors
             // churns once per frame for the fade duration after a theme change. Each
@@ -817,8 +839,8 @@ internal fun WebMapView(
             delay(STYLE_PUSH_DEBOUNCE_MS)
             webView.evaluateJavascript(
                 setStyleUrlScript(
-                    url = styleUrl(styleRef),
-                    accent = (styleRef as? MapStyleRef.Accent)?.let { accentColors },
+                    url = styleUrl(styleRef, effectiveColors.hashCode()),
+                    accent = (styleRef as? MapStyleRef.Accent)?.let { effectiveColors },
                     // The page shows MapLibre's own credits exactly when the host
                     // hides its overlay — one decision, made once here.
                     pageAttribution = !showsNativeAttribution(mapConfig.backend, styleRef),
@@ -864,7 +886,7 @@ internal fun WebMapView(
             pageReady.value,
             mapConfig.buildings3d,
             mapConfig.terrain,
-            accentColors.building,
+            effectiveColors.building,
         ) {
             if (!pageReady.value) return@LaunchedEffect
             // Same debounce as the style push above: the theme cross-fade churns the
@@ -872,7 +894,7 @@ internal fun WebMapView(
             delay(STYLE_PUSH_DEBOUNCE_MS)
             webView.evaluateJavascript(
                 "window.setFeatures && setFeatures(" +
-                    "${mapConfig.buildings3d}, ${mapConfig.terrain}, '${accentColors.building}')",
+                    "${mapConfig.buildings3d}, ${mapConfig.terrain}, '${effectiveColors.building}')",
                 null,
             )
         }
@@ -898,11 +920,13 @@ internal fun WebMapView(
                     // to re-measure / repaint after a possible surface loss.
                     Lifecycle.Event.ON_START -> {
                         webView.onResume()
+                        webView.resumeTimers()
                         webView.evaluateJavascript("window.onHostResume && onHostResume()", null)
                     }
 
                     Lifecycle.Event.ON_STOP -> {
                         webView.onPause()
+                        webView.pauseTimers()
                     }
 
                     else -> {}
@@ -926,19 +950,9 @@ internal fun WebMapView(
                 factory = { webView },
             )
         }
-        // Native tile credit only for OSM on the default provider; Google Maps and
-        // a custom style render their own credits inside the WebView (see
-        // showsNativeAttribution).
-        if (showsNativeAttribution(mapConfig.backend, styleRef)) {
-            Attribution(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(bottom = attributionBottomInset),
-                showTerrainCredit = mapConfig.terrain,
-                onClick = onOpenLicenses,
-            )
-        }
+        // Attribution credit removed by request — no "© OpenStreetMap…" chip on the
+        // map. (Note: OSM/OpenMapTiles licences ask that attribution stay visible;
+        // this build hides it per the owner's choice.)
     }
 }
 
@@ -983,16 +997,11 @@ internal class LiveMapWebViewClient(
         url: String,
     ) = onPageLoaded()
 
-    // Returning true claims the renderer death; the default kills the whole
-    // launcher process.
     override fun onRenderProcessGone(
         view: WebView,
         detail: RenderProcessGoneDetail,
     ): Boolean = onRendererGone(view, crashed = detail.didCrash())
 
-    // The containment itself, apart from the platform's detail object (which
-    // apps may not construct), so tests can report a death. The dead view must
-    // be detached and destroyed here — any other call on it can crash.
     internal fun onRendererGone(
         view: WebView,
         crashed: Boolean,
@@ -1098,11 +1107,15 @@ internal fun String.toJsStringLiteral(): String =
 // A scheme's style ref as a URL the page can load: hosted directly, or the
 // bundled base served over appassets. The page re-points the upstream tile
 // origin inside either at the configured host (see tileHost()).
-private fun styleUrl(styleRef: MapStyleRef): String =
+private fun styleUrl(styleRef: MapStyleRef, accentHash: Int? = null): String =
     when (styleRef) {
         is MapStyleRef.Hosted -> styleRef.url
         is MapStyleRef.Bundled -> appAssetsUrl(styleRef.asset)
-        is MapStyleRef.Accent -> appAssetsUrl(styleRef.baseAsset)
+        is MapStyleRef.Accent -> {
+            val base = appAssetsUrl(styleRef.baseAsset)
+            val hash = styleRef.customColors?.hashCode() ?: accentHash
+            if (hash != null) "$base?v=$hash" else base
+        }
     }
 
 // The tile hosts the OSM page may load from, in preference order: the user's

@@ -1,6 +1,7 @@
 package io.github.seijikohara.femto.ui.home
 
 import android.app.Application
+import androidx.core.net.toUri
 import android.content.ComponentName
 import android.content.Intent
 import android.location.Location
@@ -36,6 +37,12 @@ import io.github.seijikohara.femto.data.music.AudioSpectrumRepository
 import io.github.seijikohara.femto.data.music.MusicCardState
 import io.github.seijikohara.femto.data.music.MusicCommand
 import io.github.seijikohara.femto.data.music.MusicSessionRepository
+import io.github.seijikohara.femto.data.music.MusicVibes
+import io.github.seijikohara.femto.data.navigation.DestinationGeocoder
+import io.github.seijikohara.femto.data.navigation.NavigationManager
+import io.github.seijikohara.femto.data.navigation.NavigationState
+import io.github.seijikohara.femto.data.navigation.OsrmRoutingApi
+import io.github.seijikohara.femto.data.places.SearchHistoryPreferences
 import io.github.seijikohara.femto.data.system.SystemStatus
 import io.github.seijikohara.femto.data.system.SystemStatusRepository
 import io.github.seijikohara.femto.data.update.UpdateManifest
@@ -98,12 +105,13 @@ internal class HomeViewModel(
     // The boot clock the motion gate judges a fix's age against; tests pin it,
     // because Robolectric's clock starts at zero.
     private val nowElapsedRealtimeNanos: () -> Long = SystemClock::elapsedRealtimeNanos,
-    private val sendMusicCommand: (MusicCommand) -> Unit = {},
+    private val sendMusicCommand: (MusicCommand) -> Boolean = { false },
     private val resumeLastMusicSession: () -> Unit = {},
     private val resetTrip: () -> Unit = {},
     private val resolveMusicSourceComponent: (String) -> ComponentName? = { null },
     private val spectrumEnabledFlow: Flow<Boolean> = flowOf(false),
     private val spectrumBandsFor: (Flow<Boolean>) -> Flow<FloatArray?> = { flowOf(null) },
+    private val navigationManager: NavigationManager? = null,
 ) : ViewModel() {
     // The builds the update prompt has been answered about in this process. The
     // prompt closes on the answer itself, not on the store's write: a slow disk
@@ -149,6 +157,9 @@ internal class HomeViewModel(
             musicStateFlow.catchAsDefault(TAG, "music", HomeUiState.Initial.musicState),
             updateBadge,
         ) { location, address, weather, music, badge ->
+            if (location != null) {
+                navigationManager?.onLocationChanged(location)
+            }
             CoreSignals(location, address, weather, music, badge)
         }
 
@@ -158,7 +169,9 @@ internal class HomeViewModel(
             calendarFlow.catchAsDefault(TAG, "calendar", HomeUiState.Initial.calendar),
             systemStatusFlow.catchAsDefault(TAG, "system status", HomeUiState.Initial.systemStatus),
             tripStateFlow.catchAsDefault(TAG, "trip state", HomeUiState.Initial.tripState),
-        ) { core, calendar, systemStatus, tripState ->
+            navigationManager?.state ?: flowOf(NavigationState.Idle),
+        ) { core, calendar, systemStatus, tripState, navState ->
+            navigationManager?.onNetworkAvailabilityChanged(systemStatus.isOnline)
             HomeUiState(
                 location = core.location,
                 address = core.address,
@@ -168,6 +181,7 @@ internal class HomeViewModel(
                 systemStatus = systemStatus,
                 tripState = tripState,
                 updateBadge = core.updateBadge,
+                navigationState = navState,
             )
         }.stateIn(viewModelScope, WhileUiSubscribed, HomeUiState.Initial)
 
@@ -269,14 +283,33 @@ internal class HomeViewModel(
                 )
             }
 
-            HomeAction.OpenDestinations -> {
-                // Opens the destination panel at the dashboard overlay layer
-                // (DashboardContent intercepts it, like OpenAppDrawer); a no-op
-                // if it ever reaches the ViewModel.
+            HomeAction.OpenDestinations,
+            HomeAction.OpenQuickSettings -> {
+                // Handled at dashboard overlay layer
             }
 
             is HomeAction.Navigate -> {
-                mutableEvents.tryEmit(HomeEvent.LaunchDestination(action.target, action.label))
+                if (navigationManager != null) {
+                    navigationManager.startNavigation(
+                        origin = uiState.value.location,
+                        target = action.target,
+                        label = action.label,
+                    )
+                } else {
+                    mutableEvents.tryEmit(HomeEvent.LaunchDestination(action.target, action.label))
+                }
+            }
+
+            HomeAction.StopNavigation -> {
+                navigationManager?.stopNavigation()
+            }
+
+            is HomeAction.SelectRoute -> {
+                navigationManager?.selectRoute(action.index)
+            }
+
+            HomeAction.ConfirmRoute -> {
+                navigationManager?.confirmRoute(origin = uiState.value.location)
             }
 
             is HomeAction.Shortcut -> {
@@ -302,12 +335,25 @@ internal class HomeViewModel(
             }
 
             HomeAction.PlayDefaultMusic -> {
-                // Best-effort resume first, then unconditionally launch the
-                // default music app: there is no callback confirming whether the
-                // media key actually resumed a session, so the launch fallback
-                // always fires too, guaranteeing the tap visibly responds.
+                // Best-effort resume first, then launch vibe
                 resumeLastMusicSession()
-                mutableEvents.tryEmit(HomeEvent.LaunchAppCategory(Intent.CATEGORY_APP_MUSIC))
+                mutableEvents.tryEmit(
+                    HomeEvent.PlayMusicVibe(
+                        uriString = MusicVibes.MY_WAVE.uriString,
+                        stationId = MusicVibes.MY_WAVE.stationId,
+                        seeds = MusicVibes.MY_WAVE.seeds,
+                    ),
+                )
+            }
+
+            is HomeAction.PlayMusicVibe -> {
+                mutableEvents.tryEmit(
+                    HomeEvent.PlayMusicVibe(
+                        uriString = action.vibe.uriString,
+                        stationId = action.vibe.stationId,
+                        seeds = action.vibe.seeds,
+                    ),
+                )
             }
 
             HomeAction.OpenBrowser -> {
@@ -380,6 +426,10 @@ internal class HomeViewModel(
 
             HomeAction.ResetDock -> {
                 mutableEvents.tryEmit(HomeEvent.ResetDock)
+            }
+
+            HomeAction.ToggleBrightness -> {
+                // Handled at the dashboard overlay layer
             }
         }
     }
@@ -491,6 +541,21 @@ internal class HomeViewModelFactory(
         val apps = AppsRepository(application)
         val displayPreferences = DisplayPreferences(application)
         val updatePreferences = UpdatePreferences(application)
+        val routingApi = OsrmRoutingApi(
+            client = httpClient,
+            userAgent = femtoUserAgent,
+        )
+        val destinationGeocoder = DestinationGeocoder(
+            context = application,
+            client = httpClient,
+            userAgent = femtoUserAgent,
+        )
+        val historyPreferences = SearchHistoryPreferences(application)
+        val navigationManager = NavigationManager(
+            routingApi = routingApi,
+            destinationGeocoder = destinationGeocoder,
+            historyStore = historyPreferences,
+        )
 
         @Suppress("UNCHECKED_CAST")
         return HomeViewModel(
@@ -518,6 +583,7 @@ internal class HomeViewModelFactory(
                     .map { it.musicSpectrum }
                     .distinctUntilChanged(),
             spectrumBandsFor = audioSpectrum::bandsFlow,
+            navigationManager = navigationManager,
         ) as T
     }
 }

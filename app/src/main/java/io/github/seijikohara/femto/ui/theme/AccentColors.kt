@@ -22,4 +22,7 @@ internal fun AccentColor.accentSeedColor(): Color? =
         AccentColor.RED -> Color(0xFFD32F2F)
         AccentColor.VIOLET -> Color(0xFF7E57C2)
         AccentColor.PINK -> Color(0xFFEC407A)
+        AccentColor.SLATE -> Color(0xFF455A64)
+        AccentColor.GRAPHITE -> Color(0xFF37474F)
+        AccentColor.WARM -> Color(0xFF8D6E63)
     }

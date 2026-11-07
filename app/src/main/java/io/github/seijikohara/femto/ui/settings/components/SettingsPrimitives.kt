@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -55,27 +56,28 @@ import kotlin.math.roundToInt
 // dashboard) and SettingsCategoryDetail's narrow-mode back arrow (back to the
 // category list) both use it, so the two back affordances read as the same
 // control at a glance.
-private val BackIconSize = 28.dp
+private val BackIconSize = 24.dp
+private val SettingsHeaderHeight = 44.dp
 
 // SettingRow's inset from the card's edge. Internal, so that content a section
 // draws under a row (the Updates section's progress bar) lines up with the
 // row's text.
-internal val SettingRowHorizontalInset = 20.dp
-internal val SettingRowVerticalInset = 12.dp
+internal val SettingRowHorizontalInset = 16.dp
+internal val SettingRowVerticalInset = 8.dp
 
 @Composable
 internal fun Header(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) = Row(
-    modifier = modifier.fillMaxWidth(),
+    modifier = modifier.fillMaxWidth().height(SettingsHeaderHeight),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(12.dp),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
 ) {
     Box(
         modifier =
             Modifier
-                .size(FemtoDimens.MinTouchTarget)
+                .size(40.dp)
                 .clipClickable(onBack),
         contentAlignment = Alignment.Center,
     ) {
@@ -88,9 +90,64 @@ internal fun Header(
     }
     Text(
         text = stringResource(R.string.settings_title),
-        style = MaterialTheme.typography.headlineMedium,
+        style = MaterialTheme.typography.titleLarge,
         color = MaterialTheme.colorScheme.onBackground,
+        maxLines = 1,
     )
+}
+
+@Composable
+internal fun SettingsCategoryHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
+    onReset: (() -> Unit)? = null,
+) {
+    var resetDialogOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(SettingsHeaderHeight)
+                .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (onBack != null) {
+            Box(
+                modifier = Modifier.size(40.dp).clipClickable(onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                FemtoIcon(
+                    imageVector = Lucide.ArrowLeft,
+                    contentDescription = stringResource(R.string.settings_category_back),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(BackIconSize),
+                )
+            }
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+        )
+        if (onReset != null) {
+            SectionResetButton(onClick = { resetDialogOpen = true })
+        }
+    }
+    if (onReset != null && resetDialogOpen) {
+        ResetConfirmDialog(
+            title = stringResource(R.string.settings_reset_section_confirm_title, title),
+            message = stringResource(R.string.settings_reset_section_confirm_message),
+            onConfirm = {
+                onReset()
+                resetDialogOpen = false
+            },
+            onDismiss = { resetDialogOpen = false },
+        )
+    }
 }
 
 // The master-detail layout's right pane (wide) / detail view (narrow list-detail):
@@ -109,43 +166,15 @@ internal fun SettingsCategoryDetail(
     onReset: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    var resetDialogOpen by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = FemtoDimens.MinTouchTarget)
-                    .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (onBack != null) {
-                Box(
-                    modifier = Modifier.size(FemtoDimens.MinTouchTarget).clipClickable(onBack),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    FemtoIcon(
-                        imageVector = Lucide.ArrowLeft,
-                        contentDescription = stringResource(R.string.settings_category_back),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(BackIconSize),
-                    )
-                }
-            }
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f),
-            )
-            if (onReset != null) {
-                SectionResetButton(onClick = { resetDialogOpen = true })
-            }
-        }
+        SettingsCategoryHeader(
+            title = title,
+            onBack = onBack,
+            onReset = onReset,
+        )
         Surface(
             modifier = Modifier.fillMaxWidth().weight(1f),
             shape = MaterialTheme.shapes.large,
@@ -156,21 +185,9 @@ internal fun SettingsCategoryDetail(
             }
         }
     }
-    if (onReset != null && resetDialogOpen) {
-        ResetConfirmDialog(
-            title = stringResource(R.string.settings_reset_section_confirm_title, title),
-            message = stringResource(R.string.settings_reset_section_confirm_message),
-            onConfirm = {
-                onReset()
-                resetDialogOpen = false
-            },
-            onDismiss = { resetDialogOpen = false },
-        )
-    }
 }
 
-// A compact >= MinTouchTarget tap target for the per-category reset
-// affordance in SettingsCategoryDetail's header row.
+// A compact tap target for the per-category reset affordance in SettingsCategoryDetail's header row.
 @Composable
 private fun SectionResetButton(
     onClick: () -> Unit,
@@ -180,7 +197,7 @@ private fun SectionResetButton(
     Box(
         modifier =
             modifier
-                .size(FemtoDimens.MinTouchTarget)
+                .size(40.dp)
                 .clip(RoundedCornerShape(percent = 50))
                 .clickable(onClick = onClick)
                 .semantics { contentDescription = description },

@@ -33,6 +33,8 @@ internal data class SystemStatus(
     // dead battery during cold start.
     val batteryPercent: Int?,
     val charging: Boolean,
+    // Whether location (GPS) services are enabled system-wide.
+    val locationEnabled: Boolean = false,
     // True while a recent GPS_PROVIDER fix is fresh; flips back to false once the
     // last fix ages past the freshness window so the dock reads "searching"
     // when GPS reception drops (e.g. a tunnel or a parked cold start).
@@ -41,6 +43,8 @@ internal data class SystemStatus(
     // Shown under the dock's GPS icon as a coarse reception quality readout.
     val gpsSatelliteCount: Int,
 ) {
+    val isOnline: Boolean
+        get() = wifiConnected || (cellularConnected == true)
     companion object {
         val Initial: SystemStatus =
             SystemStatus(
@@ -52,6 +56,7 @@ internal data class SystemStatus(
                 bluetoothConnected = false,
                 batteryPercent = null,
                 charging = false,
+                locationEnabled = false,
                 gpsFixed = false,
                 gpsSatelliteCount = 0,
             )

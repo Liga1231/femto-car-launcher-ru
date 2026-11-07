@@ -160,7 +160,7 @@ private fun TransportButton(
             imageVector = icon,
             contentDescription = null,
             tint = content,
-            modifier = Modifier.size(if (primary) 40.dp else 32.dp),
+            modifier = Modifier.size(if (primary) 52.dp else 44.dp),
         )
     }
 }

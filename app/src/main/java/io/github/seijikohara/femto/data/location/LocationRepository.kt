@@ -9,6 +9,11 @@ import android.location.LocationManager
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.PowerManager
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
@@ -76,9 +81,31 @@ internal class LocationRepository(
     @SuppressLint("MissingPermission") // Caller checks fine or coarse location before subscribing.
     private fun rawLocationFlow(settings: LocationSettings): Flow<Location?> =
         callbackFlow {
-            // One listener shared across both registrations; each fix is forwarded verbatim.
             val listener = LocationListenerCompat { location -> trySend(location) }
             var seeded = false
+            var isRegistered = false
+
+            fun registerUpdates() {
+                if (isRegistered) return
+                listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).forEach { provider ->
+                    runCatching {
+                        LocationManagerCompat.requestLocationUpdates(
+                            locationManager,
+                            provider,
+                            settings.toLocationRequest(),
+                            listener,
+                            Looper.getMainLooper(),
+                        )
+                    }.onFailure { logProviderFailure("register", provider, it) }
+                }
+                isRegistered = true
+            }
+
+            fun unregisterUpdates() {
+                if (!isRegistered) return
+                runCatching { locationManager.removeUpdates(listener) }
+                isRegistered = false
+            }
 
             listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).forEach { provider ->
                 runCatching {
@@ -89,21 +116,39 @@ internal class LocationRepository(
                         trySend(it)
                     }
                 }.onFailure { logProviderFailure("getLastKnownLocation", provider, it) }
-
-                runCatching {
-                    LocationManagerCompat.requestLocationUpdates(
-                        locationManager,
-                        provider,
-                        settings.toLocationRequest(),
-                        listener,
-                        Looper.getMainLooper(),
-                    )
-                }.onFailure { logProviderFailure("register", provider, it) }
             }
 
             if (!seeded) trySend(null)
 
-            awaitClose { locationManager.removeUpdates(listener) }
+            val powerManager = context.getSystemService<PowerManager>()
+            val isScreenOn = powerManager?.isInteractive ?: true
+            if (isScreenOn) {
+                registerUpdates()
+            }
+
+            val screenReceiver = object : BroadcastReceiver() {
+                override fun onReceive(c: Context?, intent: Intent?) {
+                    when (intent?.action) {
+                        Intent.ACTION_SCREEN_ON -> registerUpdates()
+                        Intent.ACTION_SCREEN_OFF -> unregisterUpdates()
+                    }
+                }
+            }
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_SCREEN_OFF)
+            }
+            ContextCompat.registerReceiver(
+                context,
+                screenReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+
+            awaitClose {
+                unregisterUpdates()
+                runCatching { context.unregisterReceiver(screenReceiver) }
+            }
         }.flowOn(Dispatchers.Main.immediate)
 
     // Newest boot-clock timestamp forwarded to consumers. Repository-scoped rather than

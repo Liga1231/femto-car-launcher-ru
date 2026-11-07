@@ -1,5 +1,7 @@
 package io.github.seijikohara.femto.ui.home.components
 
+import io.github.seijikohara.femto.data.music.MusicVibe
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -83,6 +85,8 @@ internal fun NowPlayingPanel(
     onCommand: (MusicCommand) -> Unit,
     onLaunchSource: (String) -> Unit,
     onClose: () -> Unit,
+    onSelectVibe: (MusicVibe) -> Unit = {},
+    onOpenVibeSheet: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     hazeState: HazeState = rememberHazeState(),
     glassConfig: GlassConfig = GlassConfig(),
@@ -94,6 +98,7 @@ internal fun NowPlayingPanel(
     // artist / album lines scroll to full length; above it they rest as a static
     // ellipsis, matching MusicCard (see TripState.stationary).
     stationary: Boolean = false,
+    isOnline: Boolean = true,
 ) {
     BackHandler(onBack = onClose)
     Surface(
@@ -143,6 +148,9 @@ internal fun NowPlayingPanel(
                         stationary = stationary,
                         queueMaxHeight = queueMaxHeight,
                         motionTier = motionTier,
+                        onSelectVibe = onSelectVibe,
+                        onOpenVibeSheet = onOpenVibeSheet,
+                        isOnline = isOnline,
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
                 } else {
@@ -172,6 +180,9 @@ internal fun NowPlayingPanel(
                             stationary = stationary,
                             queueMaxHeight = queueMaxHeight,
                             motionTier = motionTier,
+                            onSelectVibe = onSelectVibe,
+                            onOpenVibeSheet = onOpenVibeSheet,
+                            isOnline = isOnline,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
                     }
@@ -252,6 +263,9 @@ private fun PanelControls(
     stationary: Boolean,
     queueMaxHeight: Dp,
     motionTier: MotionTier,
+    onSelectVibe: (MusicVibe) -> Unit = {},
+    onOpenVibeSheet: (() -> Unit)? = null,
+    isOnline: Boolean = true,
     modifier: Modifier = Modifier,
 ) = Column(
     modifier = if (portrait) modifier else modifier.verticalScroll(rememberScrollState()),
@@ -282,6 +296,13 @@ private fun PanelControls(
         playbackSpeed = nowPlaying.playbackSpeed,
         canSeek = nowPlaying.canSeek,
         onSeek = { targetMs -> onCommand(MusicCommand.SeekTo(targetMs)) },
+    )
+    MusicVibeBar(
+        currentVibeTitle = nowPlaying.queueTitle,
+        onSelectVibe = onSelectVibe,
+        onOpenSheet = onOpenVibeSheet,
+        isOnline = isOnline,
+        modifier = Modifier.fillMaxWidth(),
     )
     val hasToggles = nowPlaying.canShuffle || nowPlaying.canRepeat
     // The spectrum paints behind the transport strip only, exactly like the

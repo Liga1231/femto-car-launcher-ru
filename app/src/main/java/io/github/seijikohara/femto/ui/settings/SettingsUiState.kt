@@ -16,6 +16,7 @@ import io.github.seijikohara.femto.data.display.MapBackend
 import io.github.seijikohara.femto.data.display.MapColorScheme
 import io.github.seijikohara.femto.data.display.MapStyleSetting
 import io.github.seijikohara.femto.data.display.MotionTier
+import io.github.seijikohara.femto.data.display.MusicCardHeight
 import io.github.seijikohara.femto.data.display.OrientationSetting
 import io.github.seijikohara.femto.data.display.SettingsSectionId
 import io.github.seijikohara.femto.data.display.SpeedUnitSetting
@@ -83,6 +84,10 @@ internal data class SettingsUiState(
     val musicSpectrum: Boolean,
     val musicShowAlbum: Boolean,
     val musicShowArt: Boolean,
+    val musicCardHeight: MusicCardHeight = MusicCardHeight.NORMAL,
+    val themeScheduleEnabled: Boolean = false,
+    val themeScheduleLightHour: Int = 7,
+    val themeScheduleDarkHour: Int = 20,
     // The chosen Google Fonts families per slot; null means the system font.
     val latinFont: String?,
     val cjkFont: String?,
@@ -178,6 +183,9 @@ internal data class SettingsUiState(
                 googleMapsTraffic = DisplaySettings.Default.googleMapsTraffic,
                 mapTileHost = DisplaySettings.Default.mapTileHost,
                 mapCustomStyleUrl = DisplaySettings.Default.mapCustomStyleUrl,
+                themeScheduleEnabled = DisplaySettings.Default.themeScheduleEnabled,
+                themeScheduleLightHour = DisplaySettings.Default.themeScheduleLightHour,
+                themeScheduleDarkHour = DisplaySettings.Default.themeScheduleDarkHour,
             )
     }
 }
@@ -219,12 +227,28 @@ internal sealed interface SettingsAction {
         val value: ThemeMode,
     ) : SettingsAction
 
+    data class SetThemeScheduleEnabled(
+        val value: Boolean,
+    ) : SettingsAction
+
+    data class SetThemeScheduleLightHour(
+        val value: Int,
+    ) : SettingsAction
+
+    data class SetThemeScheduleDarkHour(
+        val value: Int,
+    ) : SettingsAction
+
     data class SetAccentColor(
         val value: AccentColor,
     ) : SettingsAction
 
     data class SetUiScale(
         val value: UiScale,
+    ) : SettingsAction
+
+    data class SetMusicCardHeight(
+        val value: MusicCardHeight,
     ) : SettingsAction
 
     data class SetSpeedUnit(

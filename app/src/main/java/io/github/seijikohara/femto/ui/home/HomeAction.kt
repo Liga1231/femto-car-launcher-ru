@@ -4,6 +4,7 @@ import android.content.ComponentName
 import io.github.seijikohara.femto.data.dock.DockNavId
 import io.github.seijikohara.femto.data.dock.DockStatusId
 import io.github.seijikohara.femto.data.music.MusicCommand
+import io.github.seijikohara.femto.data.music.MusicVibe
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.ui.home.components.AppsBarShortcut
 
@@ -28,14 +29,26 @@ internal sealed interface HomeAction {
     data object OpenDestinations : HomeAction
 
     /**
-     * Hand [target] to the user's navigation app: the destination panel's
-     * Navigate (a typed or dictated query) or a tap on a saved place. [label]
-     * names the pin a saved point drops; a query ignores it.
+     * Tapping the dock's status cluster: open quick settings tray (Wi-Fi, BT, Airplane mode, etc.).
+     */
+    data object OpenQuickSettings : HomeAction
+
+    /**
+     * Start in-app turn-by-turn navigation to [target].
      */
     data class Navigate(
         val target: PlaceTarget,
         val label: String = "",
     ) : HomeAction
+
+    /** Stop and clear active in-app navigation. */
+    data object StopNavigation : HomeAction
+
+    data class SelectRoute(
+        val index: Int,
+    ) : HomeAction
+
+    data object ConfirmRoute : HomeAction
 
     data object ConnectMusicPlayer : HomeAction
 
@@ -60,6 +73,13 @@ internal sealed interface HomeAction {
      */
     data object PlayDefaultMusic : HomeAction
 
+    /**
+     * Start playing a specific mood or wave (e.g. Yandex Music vibes) in the background.
+     */
+    data class PlayMusicVibe(
+        val vibe: MusicVibe,
+    ) : HomeAction
+
     data object OpenBrowser : HomeAction
 
     data object OpenCalendar : HomeAction
@@ -75,6 +95,8 @@ internal sealed interface HomeAction {
     data object ToggleMapNorthUp : HomeAction
 
     data object OpenSettings : HomeAction
+
+    data object ToggleBrightness : HomeAction
 
     /**
      * The update prompt's "Later" (or its dismissal) for build [versionCode]:

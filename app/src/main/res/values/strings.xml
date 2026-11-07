@@ -165,6 +165,7 @@
     <string name="nav_navigation">Navigation</string>
     <string name="nav_browser">Browser</string>
     <string name="nav_assistant">Assistant</string>
+    <string name="nav_brightness">Brightness</string>
     <string name="nav_settings">Settings</string>
 
     <!-- Destination panel (the dock's Navigation button) -->
@@ -180,6 +181,11 @@
     <string name="destination_no_saved_places">No saved places yet. Save a search or your current location while stopped.</string>
     <!-- %1$s = the saved place's label -->
     <string name="destination_delete_place">Delete %1$s</string>
+    <string name="destination_history_title">Recent destinations</string>
+    <string name="destination_clear_history">Clear</string>
+    <string name="destination_history_empty">No recent destinations yet</string>
+    <string name="destination_no_places_or_history">No saved places or recent destinations</string>
+    <string name="destination_delete_history_item">Remove from history</string>
 
     <!-- Shared edit-mode "Done" affordance (drawer pinned dock + dashboard dock nav). -->
     <string name="edit_done">Done</string>
@@ -354,6 +360,9 @@
     <string name="settings_accent_red">Red</string>
     <string name="settings_accent_violet">Violet</string>
     <string name="settings_accent_pink">Pink</string>
+    <string name="settings_accent_slate">Slate</string>
+    <string name="settings_accent_graphite">Graphite</string>
+    <string name="settings_accent_warm">Warm Sand</string>
     <string name="settings_subheader_map_color">Map color</string>
     <string name="settings_speed_km">km/h</string>
     <string name="settings_speed_mi">mph</string>
@@ -373,6 +382,9 @@
     <string name="settings_group_map_scheme_light">Light scheme</string>
     <string name="settings_group_map_scheme_dark">Dark scheme</string>
     <string name="settings_map_scheme_accent">Accent (app color)</string>
+    <string name="settings_map_scheme_muted">Muted (neutral gray)</string>
+    <string name="settings_map_scheme_warm">Warm (pastel)</string>
+    <string name="settings_map_scheme_slate">Slate (auto)</string>
     <string name="settings_map_scheme_positron">Positron</string>
     <string name="settings_map_scheme_bright">Bright</string>
     <string name="settings_map_scheme_liberty">Liberty</string>
@@ -478,6 +490,10 @@
     <string name="settings_panel_music_album_desc">Show the album name on the music card and the full-screen player.</string>
     <string name="settings_group_panel_music_art">Cover art</string>
     <string name="settings_panel_music_art_desc">Show the album artwork on the music card and the full-screen player.</string>
+    <string name="settings_group_music_height">Player height</string>
+    <string name="settings_music_height_normal">Normal</string>
+    <string name="settings_music_height_tall">Tall</string>
+    <string name="settings_music_height_extra">Extra tall</string>
     <string name="settings_group_panel_video">Video window</string>
     <string name="settings_panel_video_desc">Play a video file from this device in a small window over the map.</string>
     <string name="settings_video_file">Video file</string>
@@ -637,4 +653,30 @@
     <!-- %1$s = the installed version name -->
     <string name="notification_update_title">Updated to %1$s</string>
     <string name="notification_update_text">Tap to open.</string>
+
+    <!-- Scenarios -->
+    <string name="settings_section_scenarios">Scenarios</string>
+    <string name="settings_scenario_theme_schedule_title">Schedule theme change</string>
+    <string name="settings_scenario_theme_schedule_summary_on">Day from %1$02d:00, night from %2$02d:00</string>
+    <string name="settings_scenario_theme_schedule_summary_off">Disabled</string>
+    <string name="settings_scenario_day_header">Daytime (Light theme)</string>
+    <string name="settings_scenario_night_header">Nighttime (Dark theme)</string>
+    <string name="settings_scenario_light_time_title">Light theme start time</string>
+    <string name="settings_scenario_dark_time_title">Dark theme start time</string>
+    <string name="settings_scenario_light_scheme_title">Map scheme for day</string>
+    <string name="settings_scenario_dark_scheme_title">Map scheme for night</string>
+    <!-- Music Vibes (Yandex Music Waves & Moods) -->
+    <string name="vibe_my_wave">My Wave</string>
+    <string name="vibe_favorite">Favorites</string>
+    <string name="vibe_energetic">Energetic</string>
+    <string name="vibe_calm">Calm</string>
+    <string name="vibe_wake_up">Wake up</string>
+    <string name="vibe_road_trip">Road trip</string>
+    <string name="vibe_work">Work</string>
+    <string name="vibe_workout">Workout</string>
+    <string name="vibe_sleep">Fall asleep</string>
+    <string name="vibe_happy">Happy</string>
+    <string name="vibe_popular">Popular</string>
+    <string name="music_vibes_title">Mood &amp; Wave</string>
+    <string name="music_source_yandex">Yandex Music</string>
 </resources>

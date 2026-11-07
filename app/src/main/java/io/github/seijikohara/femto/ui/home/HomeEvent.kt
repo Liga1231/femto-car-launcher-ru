@@ -1,4 +1,4 @@
-package io.github.seijikohara.femto.ui.home
+﻿package io.github.seijikohara.femto.ui.home
 
 import android.content.ComponentName
 import io.github.seijikohara.femto.data.dock.DockNavId
@@ -59,7 +59,7 @@ internal sealed interface HomeEvent {
         val delta: Int,
     ) : HomeEvent
 
-    /** Flip the persisted north-up ⇄ heading-up map orientation (from the compass tap). */
+    /** Flip the persisted north-up ? heading-up map orientation (from the compass tap). */
     data object ToggleMapNorthUp : HomeEvent
 
     /** Open the system "Notification listener access" settings so the user can grant our NLS. */
@@ -116,4 +116,12 @@ internal sealed interface HomeEvent {
 
     /** Restore the dock's nav/status order and visibility to their factory defaults. */
     data object ResetDock : HomeEvent
+
+    data class PlayMusicVibe(
+        val uriString: String,
+        /** stationId для MediaBrowser API */
+        val stationId: String = "user:onyourwave",
+        /** seeds для MediaBrowser API, null если не нужны */
+        val seeds: String? = null,
+    ) : HomeEvent
 }

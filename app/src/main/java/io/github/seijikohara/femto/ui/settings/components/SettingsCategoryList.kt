@@ -44,6 +44,7 @@ internal fun SettingsCategoryList(
     badged: Set<SettingsCategoryId> = emptySet(),
 ) = Column(
     modifier = modifier.verticalScroll(rememberScrollState()),
+    verticalArrangement = Arrangement.spacedBy(4.dp),
 ) {
     SettingsCategoryId.entries.forEach { id ->
         SettingsCategoryListItem(
@@ -75,15 +76,19 @@ private fun SettingsCategoryListItem(
     val contentColor =
         if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
     val selectDescription = stringResource(R.string.settings_category_select, title)
+    val isLandscape =
+        androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val itemMinHeight = if (isLandscape) 42.dp else FemtoDimens.MinTouchTarget
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = FemtoDimens.MinTouchTarget)
+                .heightIn(min = itemMinHeight)
                 .background(containerColor, MaterialTheme.shapes.large)
                 .selectable(selected = selected, role = Role.Tab, onClick = onClick)
                 .semantics { contentDescription = selectDescription }
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 14.dp, vertical = if (isLandscape) 2.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

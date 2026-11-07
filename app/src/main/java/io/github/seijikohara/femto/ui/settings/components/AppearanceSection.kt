@@ -111,6 +111,9 @@ internal fun AppearanceSection(
                 options =
                     listOf(
                         MapColorScheme.ACCENT to stringResource(R.string.settings_map_scheme_accent),
+                        MapColorScheme.MUTED to stringResource(R.string.settings_map_scheme_muted),
+                        MapColorScheme.WARM to stringResource(R.string.settings_map_scheme_warm),
+                        MapColorScheme.SLATE to stringResource(R.string.settings_map_scheme_slate),
                         MapColorScheme.POSITRON to stringResource(R.string.settings_map_scheme_positron),
                         MapColorScheme.BRIGHT to stringResource(R.string.settings_map_scheme_bright),
                         MapColorScheme.LIBERTY to stringResource(R.string.settings_map_scheme_liberty),
@@ -126,6 +129,9 @@ internal fun AppearanceSection(
                 options =
                     listOf(
                         MapColorScheme.ACCENT to stringResource(R.string.settings_map_scheme_accent),
+                        MapColorScheme.MUTED to stringResource(R.string.settings_map_scheme_muted),
+                        MapColorScheme.WARM to stringResource(R.string.settings_map_scheme_warm),
+                        MapColorScheme.SLATE to stringResource(R.string.settings_map_scheme_slate),
                         MapColorScheme.DARK_MATTER to
                             stringResource(R.string.settings_map_scheme_dark_matter),
                         MapColorScheme.DARK to stringResource(R.string.settings_map_scheme_dark),
@@ -316,8 +322,8 @@ private fun AccentRow(
     modifier =
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-    verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = SettingRowHorizontalInset, vertical = SettingRowVerticalInset),
+    verticalArrangement = Arrangement.spacedBy(6.dp),
 ) {
     Text(
         text = stringResource(R.string.settings_group_accent),
@@ -399,6 +405,9 @@ private fun AccentColor.labelRes(): Int =
         AccentColor.RED -> R.string.settings_accent_red
         AccentColor.VIOLET -> R.string.settings_accent_violet
         AccentColor.PINK -> R.string.settings_accent_pink
+        AccentColor.SLATE -> R.string.settings_accent_slate
+        AccentColor.GRAPHITE -> R.string.settings_accent_graphite
+        AccentColor.WARM -> R.string.settings_accent_warm
     }
 
 // The row summary never shows the URL itself: a provider key may ride in its

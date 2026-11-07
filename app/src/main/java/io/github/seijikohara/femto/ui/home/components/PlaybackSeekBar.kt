@@ -73,8 +73,9 @@ internal fun PlaybackSeekBar(
             ?: if (durationMs > 0L) (livePosition.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     val shownMs = dragFraction?.let { seekTargetMs(it, durationMs) } ?: livePosition
     val seekLabel = stringResource(R.string.music_seek)
+    val effectiveCanSeek = canSeek || durationMs > 0L
     val gestureModifier =
-        if (canSeek) {
+        if (effectiveCanSeek) {
             Modifier
                 .progressSemantics(fraction)
                 .semantics {
@@ -153,7 +154,7 @@ internal fun PlaybackSeekBar(
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary),
             )
-            if (canSeek) {
+            if (effectiveCanSeek) {
                 Box(
                     modifier = Modifier.fillMaxWidth(fraction),
                     contentAlignment = Alignment.CenterEnd,

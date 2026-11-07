@@ -39,6 +39,8 @@ internal data class NowPlaying(
     val repeatMode: RepeatMode = RepeatMode.NONE,
     /** Upcoming tracks after the active queue item, capped at [QUEUE_UPCOMING_LIMIT]. */
     val queue: List<QueueEntry> = emptyList(),
+    /** Current queue title or wave mood (e.g. "Любимое", "Бодрое", "Моя волна"). */
+    val queueTitle: String? = null,
 )
 
 /**
@@ -55,6 +57,7 @@ internal val NowPlaying.trackKey: String get() = "$packageName $title $album"
  */
 internal fun sourceLabel(packageName: String): String =
     when {
+        packageName.contains("yandex", ignoreCase = true) -> "Яндекс Музыка"
         packageName.contains("spotify", ignoreCase = true) -> "Spotify"
         packageName.contains("apple", ignoreCase = true) -> "Apple Music"
         packageName.contains("youtube", ignoreCase = true) -> "YouTube Music"

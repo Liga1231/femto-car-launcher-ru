@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -59,15 +60,21 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Mic
 import com.composables.icons.lucide.Music
 import com.composables.icons.lucide.Navigation
+import com.composables.icons.lucide.NavigationOff
+import android.widget.Toast
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalContext
 import com.composables.icons.lucide.Phone
 import com.composables.icons.lucide.RotateCcw
 import com.composables.icons.lucide.Settings
+import com.composables.icons.lucide.Sun
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.seijikohara.femto.R
 import io.github.seijikohara.femto.data.display.DockPosition
 import io.github.seijikohara.femto.data.display.DockWidth
 import io.github.seijikohara.femto.data.display.MotionTier
+import io.github.seijikohara.femto.data.dock.DEFAULT_NAV_HIDDEN
 import io.github.seijikohara.femto.data.dock.DockNavId
 import io.github.seijikohara.femto.data.dock.DockStatusId
 import io.github.seijikohara.femto.data.system.SystemStatus
@@ -91,7 +98,7 @@ import kotlin.math.abs
  */
 internal data class DockConfig(
     val navOrder: List<DockNavId> = DockNavId.entries,
-    val navHidden: Set<DockNavId> = emptySet(),
+    val navHidden: Set<DockNavId> = DEFAULT_NAV_HIDDEN,
     val statusOrder: List<DockStatusId> = DockStatusId.entries,
     val statusHidden: Set<DockStatusId> = emptySet(),
 ) {
@@ -217,6 +224,7 @@ internal fun navSpecFor(id: DockNavId): NavSpec =
         DockNavId.BROWSER -> NavSpec(Lucide.Globe, R.string.nav_browser, HomeAction.OpenBrowser)
         DockNavId.ASSISTANT -> NavSpec(Lucide.Mic, R.string.nav_assistant, HomeAction.OpenAssistant)
         DockNavId.SETTINGS -> NavSpec(Lucide.Settings, R.string.nav_settings, HomeAction.OpenSettings)
+        DockNavId.BRIGHTNESS -> NavSpec(Lucide.Sun, R.string.nav_brightness, HomeAction.ToggleBrightness)
     }
 
 /**
@@ -257,6 +265,7 @@ internal fun DashboardDock(
     dockConfig: DockConfig = DockConfig(),
     motionTier: MotionTier = MotionTier.STANDARD,
     updateBadge: Boolean = false,
+    onDockWidthChanged: (Int) -> Unit = {},
 ) = when (position) {
     DockPosition.BOTTOM, DockPosition.TOP -> {
         HorizontalDock(
@@ -269,6 +278,7 @@ internal fun DashboardDock(
             dockConfig = dockConfig,
             motionTier = motionTier,
             updateBadge = updateBadge,
+            onDockWidthChanged = onDockWidthChanged,
         )
     }
 
@@ -297,6 +307,7 @@ private fun HorizontalDock(
     dockConfig: DockConfig = DockConfig(),
     motionTier: MotionTier = MotionTier.STANDARD,
     updateBadge: Boolean = false,
+    onDockWidthChanged: (Int) -> Unit = {},
 ) {
     val visibleNav = dockConfig.visibleNav
     // Read the available width before committing to a layout. The fixed-margin
@@ -341,7 +352,8 @@ private fun HorizontalDock(
                             // way it centres the pill (see extendedDockMaxWidth).
                             Modifier.widthIn(max = extendedDockMaxWidth(showStatusCluster)).fillMaxWidth()
                         },
-                    ).glassChrome(MaterialTheme.shapes.large, hazeState, glassConfig),
+                    ).glassChrome(MaterialTheme.shapes.large, hazeState, glassConfig)
+                        .onSizeChanged { size -> if (size.width > 0) onDockWidthChanged(size.width) },
             color = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
@@ -375,6 +387,7 @@ private fun HorizontalDock(
                                 onEnterEdit = { editing = true },
                                 modifier = Modifier.padding(horizontal = FemtoDimens.DockButtonMargin),
                                 updateBadge = updateBadge,
+                                isOnline = systemStatus.isOnline,
                             )
                         }
                     }
@@ -429,6 +442,7 @@ private fun HorizontalDock(
                                         onEnterEdit = { editing = true },
                                         modifier = Modifier.weight(1f),
                                         updateBadge = updateBadge,
+                                        isOnline = systemStatus.isOnline,
                                     )
                                 }
                             }
@@ -559,6 +573,7 @@ private fun VerticalDock(
                                     onEnterEdit = { editing = true },
                                     modifier = Modifier.weight(1f),
                                     updateBadge = updateBadge,
+                                    isOnline = systemStatus.isOnline,
                                 )
                             }
                         }
@@ -633,7 +648,7 @@ private fun NavButton(
         FemtoIcon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(26.dp),
         )
     }
@@ -660,13 +675,31 @@ private fun EditableNavButton(
     onEnterEdit: () -> Unit,
     modifier: Modifier = Modifier,
     updateBadge: Boolean = false,
+    isOnline: Boolean = true,
 ) {
     val spec = navSpecFor(id)
+    val isNav = id == DockNavId.NAVIGATION
+    val isBlocked = isNav && !isOnline
+    val context = LocalContext.current
+
+    val icon = if (isBlocked) Lucide.NavigationOff else spec.icon
+    val description = if (isBlocked) {
+        "Навигация (нет интернета)"
+    } else {
+        stringResource(spec.labelRes)
+    }
+
     NavButton(
-        icon = spec.icon,
-        description = stringResource(spec.labelRes),
-        onClick = { onAction(spec.action) },
-        modifier = modifier,
+        icon = icon,
+        description = description,
+        onClick = {
+            if (isBlocked) {
+                Toast.makeText(context, "Навигатор работает только с интернетом", Toast.LENGTH_SHORT).show()
+            } else {
+                onAction(spec.action)
+            }
+        },
+        modifier = modifier.then(if (isBlocked) Modifier.alpha(0.38f) else Modifier),
         onLongClickLabel = stringResource(R.string.dock_edit),
         onLongClick = onEnterEdit,
         // The update is offered in Settings (its Updates section), so the dot
@@ -839,7 +872,7 @@ private fun DockNavEditTile(
         FemtoIcon(
             imageVector = spec.icon,
             contentDescription = stringResource(spec.labelRes),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(26.dp),
         )
     }

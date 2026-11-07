@@ -25,6 +25,7 @@ import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import androidx.core.location.LocationManagerCompat
 import io.github.seijikohara.femto.data.common.hasBluetoothConnectPermission
 import io.github.seijikohara.femto.data.common.hasReadPhoneStatePermission
 import io.github.seijikohara.femto.data.location.LocationRepository
@@ -104,6 +105,7 @@ internal class SystemStatusRepository(
                 bluetoothConnected = bt.connected,
                 batteryPercent = battery.percent,
                 charging = battery.charging,
+                locationEnabled = gps.enabled,
                 gpsFixed = gps.fixed,
                 gpsSatelliteCount = gps.satellites,
             )
@@ -368,9 +370,31 @@ internal class SystemStatusRepository(
     // Combine the reception flag with the satellite count so the dock renders
     // both from one [SystemStatus] slot. combine emits once both sources have
     // seeded (gpsFixedFlow via onStart, gnssSatelliteFlow via its leading 0).
+    private fun locationEnabledFlow(): Flow<Boolean> = callbackFlow {
+        val lm = locationManager
+        if (lm == null) {
+            trySend(false)
+            awaitClose {}
+            return@callbackFlow
+        }
+        val readEnabled = {
+            LocationManagerCompat.isLocationEnabled(lm)
+        }
+        trySend(readEnabled())
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                trySend(readEnabled())
+            }
+        }
+        context.registerReceiver(receiver, IntentFilter(LocationManager.MODE_CHANGED_ACTION))
+        awaitClose {
+            context.unregisterReceiver(receiver)
+        }
+    }
+
     private fun gpsFlow(): Flow<GpsReading> =
-        combine(gpsFixedFlow(), gnssSatelliteFlow()) { fixed, satellites ->
-            GpsReading(fixed = fixed, satellites = satellites)
+        combine(locationEnabledFlow(), gpsFixedFlow(), gnssSatelliteFlow()) { enabled, fixed, satellites ->
+            GpsReading(enabled = enabled, fixed = fixed, satellites = satellites)
         }
 
     /**
@@ -562,6 +586,7 @@ internal class SystemStatusRepository(
     // Pairs the GPS freshness flag (from locationFlow) with the GnssStatus
     // satellite count so the dock renders both from one combined slot.
     private data class GpsReading(
+        val enabled: Boolean,
         val fixed: Boolean,
         val satellites: Int,
     )

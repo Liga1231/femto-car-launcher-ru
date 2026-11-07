@@ -61,17 +61,19 @@ internal fun Modifier.glassEffect(
     blurRadius: Dp,
     tintScale: Int,
 ): Modifier {
+    val isDark = LocalFemtoDarkTheme.current
     val tintAlpha = glassTintAlpha(tintScale)
-    val surfaceColor = MaterialTheme.colorScheme.surface
+    val surfaceColor = if (isDark) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceContainerHighest
+    val effectiveAlpha = if (isDark) tintAlpha else (tintAlpha * 1.25f).coerceIn(0.70f, 0.95f)
     return hazeBlur(
         input = HazeInput.Sources(hazeState),
         style =
             HazeBlurStyle {
                 backgroundColor(surfaceColor)
-                colorEffects(listOf(HazeColorEffect.tint(surfaceColor.copy(alpha = tintAlpha))))
+                colorEffects(listOf(HazeColorEffect.tint(surfaceColor.copy(alpha = effectiveAlpha))))
                 blurRadius(blurRadius)
             },
-        performanceMode = HazePerformanceMode.Quality,
+        performanceMode = HazePerformanceMode.Balanced,
     )
 }
 
@@ -95,8 +97,9 @@ internal fun Modifier.glassChrome(
     shape: Shape,
     hazeState: HazeState,
     glassConfig: GlassConfig,
-): Modifier =
-    this
+): Modifier {
+    val isDark = LocalFemtoDarkTheme.current
+    return this
         .then(
             if (glassConfig.shadowEnabled && glassConfig.shadowSize > 0.dp) {
                 // Theme is read only on the enabled path, so a default (shadow-off)
@@ -104,10 +107,14 @@ internal fun Modifier.glassChrome(
                 // the explicit clip below frosts the backdrop; the shadow only needs to
                 // draw in the margin outside the shape.
                 val shadowColor =
-                    (if (LocalFemtoDarkTheme.current) Color.White else Color.Black)
-                        .copy(alpha = glassShadowAlpha(glassConfig.shadowIntensity))
+                    if (isDark) {
+                        Color.White.copy(alpha = (glassShadowAlpha(glassConfig.shadowIntensity) * 0.75f).coerceIn(0f, 1f))
+                    } else {
+                        Color.Black.copy(alpha = (glassShadowAlpha(glassConfig.shadowIntensity) * 1.6f).coerceIn(0.20f, 0.45f))
+                    }
+                val shadowElevation = if (isDark) glassConfig.shadowSize else maxOf(glassConfig.shadowSize, 6.dp)
                 Modifier.shadow(
-                    elevation = glassConfig.shadowSize,
+                    elevation = shadowElevation,
                     shape = shape,
                     clip = false,
                     ambientColor = shadowColor,
@@ -119,7 +126,14 @@ internal fun Modifier.glassChrome(
         ).clip(shape)
         .glassEffect(hazeState, glassConfig.blurRadius, glassConfig.tintScale)
         .then(
-            if (glassConfig.showBorder) {
+            if (!isDark) {
+                // In light theme, always ensure a crisp boundary border to cleanly separate from the map
+                Modifier.border(
+                    GlassBorderWidth,
+                    Color.Black.copy(alpha = 0.16f),
+                    shape,
+                )
+            } else if (glassConfig.showBorder) {
                 // Same hairline as the dock / speed-panel dividers: outlineVariant at the
                 // shared DividerAlpha, so the opt-in panel outline reads as one family.
                 Modifier.border(
@@ -131,6 +145,7 @@ internal fun Modifier.glassChrome(
                 Modifier
             },
         )
+}
 
 /**
  * Resolve the tint alpha from the user's absolute opacity [tintPercent]

@@ -1,33 +1,55 @@
 package io.github.seijikohara.femto.ui.destination
 
+import android.location.Location
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.seijikohara.femto.data.common.WhileUiSubscribed
+import io.github.seijikohara.femto.data.common.femtoUserAgent
 import io.github.seijikohara.femto.data.location.LocationGraph
 import io.github.seijikohara.femto.data.location.VehicleMotion
+import io.github.seijikohara.femto.data.navigation.AddressSuggestion
+import io.github.seijikohara.femto.data.navigation.DestinationGeocoder
+import io.github.seijikohara.femto.data.places.HistoryItem
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.data.places.SavedPlacesPreferences
 import io.github.seijikohara.femto.data.places.SavedPlacesStore
+import io.github.seijikohara.femto.data.places.SearchHistoryPreferences
+import io.github.seijikohara.femto.data.places.SearchHistoryStore
 import io.github.seijikohara.femto.data.voice.SpeechInput
 import io.github.seijikohara.femto.data.voice.VoiceRecognizer
 import io.github.seijikohara.femto.data.voice.VoiceState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.OkHttpClient
 import java.util.Locale
+
+private object NoOpSearchHistoryStore : SearchHistoryStore {
+    override val history: Flow<List<HistoryItem>> = emptyFlow()
+    override suspend fun add(label: String, target: PlaceTarget) {}
+    override suspend fun delete(id: Long) {}
+    override suspend fun clear() {}
+}
 
 /**
  * Drives the destination panel: the query (typed, or dictated through
- * [speech]), the saved places in [placesStore], and the motion gate from
- * [motionFlow] (see [DestinationUiState.typingAllowed]).
+ * [speech]), the saved places in [placesStore], search history in [historyStore],
+ * and the motion gate from [motionFlow] (see [DestinationUiState.typingAllowed]).
  *
  * The gate lives here rather than only in the UI, so a stale tap or a
  * keyboard that stays up as the vehicle pulls away cannot type, save or
@@ -40,24 +62,44 @@ internal class DestinationViewModel(
     private val placesStore: SavedPlacesStore,
     motionFlow: Flow<VehicleMotion>,
     private val speech: SpeechInput,
+    private val destinationGeocoder: DestinationGeocoder? = null,
+    locationFlow: Flow<Location?> = emptyFlow(),
+    private val historyStore: SearchHistoryStore = NoOpSearchHistoryStore,
 ) : ViewModel() {
     private val query = MutableStateFlow("")
+    private val suggestions = MutableStateFlow<List<AddressSuggestion>>(emptyList())
+    private val isSearchingSuggestions = MutableStateFlow(false)
+
+    private data class SearchState(
+        val query: String,
+        val suggestions: List<AddressSuggestion>,
+        val isSearching: Boolean,
+    )
+
+    private val searchFlow: Flow<SearchState> =
+        combine(query, suggestions, isSearchingSuggestions) { q, s, searching ->
+            SearchState(q, s, searching)
+        }
 
     val uiState: StateFlow<DestinationUiState> =
         combine(
-            query,
+            searchFlow,
             speech.state,
             placesStore.places,
+            historyStore.history,
             // Seeded so the panel never waits on a location stack that has not
             // spoken; UNKNOWN fails open (see DestinationUiState.typingAllowed).
             motionFlow.onStart { emit(VehicleMotion.UNKNOWN) }.distinctUntilChanged(),
-        ) {
-            query,
-            voice,
-            places,
-            motion,
-            ->
-            DestinationUiState(query = query, voice = voice, places = places, motion = motion)
+        ) { search, voice, places, history, motion ->
+            DestinationUiState(
+                query = search.query,
+                voice = voice,
+                places = places,
+                motion = motion,
+                suggestions = search.suggestions,
+                isSearchingSuggestions = search.isSearching,
+                history = history,
+            )
         }.stateIn(viewModelScope, WhileUiSubscribed, DestinationUiState.Initial)
 
     init {
@@ -71,6 +113,32 @@ internal class DestinationViewModel(
                     speech.reset()
                 }
             }
+        }
+
+        viewModelScope.launch {
+            @OptIn(FlowPreview::class)
+            query
+                .debounce(300)
+                .distinctUntilChanged()
+                .collectLatest { text ->
+                    val trimmed = text.trim()
+                    if (trimmed.length < 2 || destinationGeocoder == null) {
+                        suggestions.value = emptyList()
+                        isSearchingSuggestions.value = false
+                    } else {
+                        isSearchingSuggestions.value = true
+                        try {
+                            val lastLocation = withTimeoutOrNull(200) { locationFlow.firstOrNull() }
+                            val results = destinationGeocoder.searchSuggestions(trimmed, lastLocation)
+                            suggestions.value = results
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            suggestions.value = emptyList()
+                        } finally {
+                            isSearchingSuggestions.value = false
+                        }
+                    }
+                }
         }
     }
 
@@ -116,9 +184,28 @@ internal class DestinationViewModel(
                 if (typingAllowed) viewModelScope.launch { placesStore.delete(action.id) }
             }
 
+            is DestinationAction.DeleteHistory -> {
+                if (typingAllowed) viewModelScope.launch { historyStore.delete(action.id) }
+            }
+
+            DestinationAction.ClearHistory -> {
+                if (typingAllowed) viewModelScope.launch { historyStore.clear() }
+            }
+
             DestinationAction.ClearQuery -> {
                 query.value = ""
+                suggestions.value = emptyList()
+                isSearchingSuggestions.value = false
             }
+        }
+    }
+
+    fun recordDestination(
+        label: String,
+        target: PlaceTarget,
+    ) {
+        viewModelScope.launch {
+            historyStore.add(label, target)
         }
     }
 
@@ -150,10 +237,24 @@ internal val DestinationViewModelFactory =
         initializer {
             val application =
                 checkNotNull(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
+            val locationGraph = LocationGraph.get(application)
+            val httpClient =
+                OkHttpClient
+                    .Builder()
+                    .build()
+            val geocoder =
+                DestinationGeocoder(
+                    context = application,
+                    client = httpClient,
+                    userAgent = femtoUserAgent,
+                )
             DestinationViewModel(
                 placesStore = SavedPlacesPreferences(application),
-                motionFlow = LocationGraph.get(application).vehicleMotion(),
+                motionFlow = locationGraph.vehicleMotion(),
                 speech = VoiceRecognizer(application),
+                destinationGeocoder = geocoder,
+                locationFlow = locationGraph.locationFlow(),
+                historyStore = SearchHistoryPreferences(application),
             )
         }
     }

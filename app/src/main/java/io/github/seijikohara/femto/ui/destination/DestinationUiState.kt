@@ -1,6 +1,8 @@
 package io.github.seijikohara.femto.ui.destination
 
 import io.github.seijikohara.femto.data.location.VehicleMotion
+import io.github.seijikohara.femto.data.navigation.AddressSuggestion
+import io.github.seijikohara.femto.data.places.HistoryItem
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.data.places.SavedPlace
 import io.github.seijikohara.femto.data.voice.VoiceState
@@ -17,6 +19,9 @@ internal data class DestinationUiState(
     val voice: VoiceState,
     val places: List<SavedPlace>,
     val motion: VehicleMotion,
+    val suggestions: List<AddressSuggestion> = emptyList(),
+    val isSearchingSuggestions: Boolean = false,
+    val history: List<HistoryItem> = emptyList(),
 ) {
     /**
      * True unless the verdict is [VehicleMotion.MOVING]. The gate fails open:
@@ -38,6 +43,9 @@ internal data class DestinationUiState(
                 voice = VoiceState.Idle,
                 places = emptyList(),
                 motion = VehicleMotion.UNKNOWN,
+                suggestions = emptyList(),
+                isSearchingSuggestions = false,
+                history = emptyList(),
             )
     }
 }
@@ -78,6 +86,14 @@ internal sealed interface DestinationAction {
     data class DeletePlace(
         val id: Long,
     ) : DestinationAction
+
+    /** Remove an item from search/navigation history; not while moving. */
+    data class DeleteHistory(
+        val id: Long,
+    ) : DestinationAction
+
+    /** Clear all search/navigation history; not while moving. */
+    data object ClearHistory : DestinationAction
 
     /**
      * Empty the query after a hand-off, so the next open starts fresh. Allowed

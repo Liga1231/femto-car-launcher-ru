@@ -2,6 +2,14 @@ package io.github.seijikohara.femto.ui.home.components
 
 import android.location.Location
 import androidx.compose.animation.AnimatedVisibility
+import android.os.SystemClock
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.runtime.mutableLongStateOf
+import kotlinx.coroutines.delay
 import androidx.compose.animation.EnterExitState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -49,7 +57,10 @@ import io.github.seijikohara.femto.data.display.DockPosition
 import io.github.seijikohara.femto.data.display.DockWidth
 import io.github.seijikohara.femto.data.display.DriverSide
 import io.github.seijikohara.femto.data.display.MotionTier
+import io.github.seijikohara.femto.data.display.MusicCardHeight
 import io.github.seijikohara.femto.data.music.MusicCardState
+import io.github.seijikohara.femto.data.music.MusicVibe
+import io.github.seijikohara.femto.data.navigation.NavigationState
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.ui.destination.DestinationPanelHost
 import io.github.seijikohara.femto.ui.drawer.AppDrawerPanelHost
@@ -182,6 +193,7 @@ internal fun DashboardScaffold(
     calendarDateOnly: Boolean = false,
     musicShowAlbum: Boolean = true,
     musicShowArt: Boolean = true,
+    musicCardHeight: MusicCardHeight = MusicCardHeight.NORMAL,
     motionTier: MotionTier = MotionTier.STANDARD,
     clock: Clock = Clock.systemDefaultZone(),
     // Forwarded to MapPanel; null means the real WebView map. Screenshot tests
@@ -199,6 +211,7 @@ internal fun DashboardScaffold(
     videoPictureVisible: Boolean = false,
     onVideoAction: (VideoAction) -> Unit = {},
     videoSurface: @Composable (Modifier) -> Unit = {},
+    fullscreen: Boolean = false,
 ) = DashboardContent(
     uiState = uiState,
     is24Hour = is24Hour,
@@ -221,6 +234,7 @@ internal fun DashboardScaffold(
     calendarDateOnly = calendarDateOnly,
     musicShowAlbum = musicShowAlbum,
     musicShowArt = musicShowArt,
+    musicCardHeight = musicCardHeight,
     motionTier = motionTier,
     clock = clock,
     mapSurface = mapSurface,
@@ -229,6 +243,7 @@ internal fun DashboardScaffold(
     videoPictureVisible = videoPictureVisible,
     onVideoAction = onVideoAction,
     videoSurface = videoSurface,
+    fullscreen = fullscreen,
 )
 
 // The full-screen dashboard body: the map fills the viewport as the background
@@ -255,6 +270,7 @@ private fun DashboardContent(
     calendarDateOnly: Boolean = false,
     musicShowAlbum: Boolean = true,
     musicShowArt: Boolean = true,
+    musicCardHeight: MusicCardHeight = MusicCardHeight.NORMAL,
     motionTier: MotionTier = MotionTier.STANDARD,
     clock: Clock = Clock.systemDefaultZone(),
     // Forwarded to MapPanel; null means the real WebView map. Screenshot tests
@@ -266,6 +282,7 @@ private fun DashboardContent(
     videoPictureVisible: Boolean = false,
     onVideoAction: (VideoAction) -> Unit = {},
     videoSurface: @Composable (Modifier) -> Unit = {},
+    fullscreen: Boolean = false,
 ) = BoxWithConstraints(modifier = modifier) {
     val compact = maxHeight < CompactHeightBreakpoint || maxWidth < CompactWidthBreakpoint
     val portrait = maxHeight > maxWidth
@@ -307,7 +324,19 @@ private fun DashboardContent(
     // OpenDestinations actions are intercepted here rather than routed to the
     // ViewModel. rememberSaveable keeps an open panel open across rotation.
     var appsExpanded by rememberSaveable { mutableStateOf(false) }
+    var showMoodSheet by rememberSaveable { mutableStateOf(false) }
     var destinationExpanded by rememberSaveable { mutableStateOf(false) }
+    var quickSettingsExpanded by rememberSaveable { mutableStateOf(false) }
+    var showBrightnessSlider by remember { mutableStateOf(false) }
+    var lastBrightnessInteractionTime by remember { mutableLongStateOf(0L) }
+    var dockWidthPx by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(showBrightnessSlider, lastBrightnessInteractionTime) {
+        if (showBrightnessSlider) {
+            delay(5000L)
+            showBrightnessSlider = false
+        }
+    }
     var nowPlayingExpanded by rememberSaveable { mutableStateOf(false) }
     var calendarExpanded by rememberSaveable { mutableStateOf(false) }
     var weatherExpanded by rememberSaveable { mutableStateOf(false) }
@@ -357,6 +386,18 @@ private fun DashboardContent(
             tripExpanded = false
             videoExpanded = false
             appsExpanded = false
+            quickSettingsExpanded = false
+        }
+    }
+    LaunchedEffect(quickSettingsExpanded) {
+        if (quickSettingsExpanded) {
+            nowPlayingExpanded = false
+            calendarExpanded = false
+            weatherExpanded = false
+            tripExpanded = false
+            videoExpanded = false
+            appsExpanded = false
+            destinationExpanded = false
         }
     }
     // A tap outside an open panel's body dismisses it, matching the modal
@@ -370,6 +411,7 @@ private fun DashboardContent(
             videoExpanded -> ({ videoExpanded = false })
             appsExpanded -> ({ appsExpanded = false })
             destinationExpanded -> ({ destinationExpanded = false })
+            quickSettingsExpanded -> ({ quickSettingsExpanded = false })
             else -> null
         }
     val overlayAction =
@@ -378,6 +420,13 @@ private fun DashboardContent(
                 when (action) {
                     HomeAction.OpenAppDrawer -> appsExpanded = true
                     HomeAction.OpenDestinations -> destinationExpanded = true
+                    HomeAction.OpenQuickSettings -> quickSettingsExpanded = true
+                    HomeAction.ToggleBrightness -> {
+                        showBrightnessSlider = !showBrightnessSlider
+                        if (showBrightnessSlider) {
+                            lastBrightnessInteractionTime = SystemClock.uptimeMillis()
+                        }
+                    }
                     else -> onAction(action)
                 }
             }
@@ -478,7 +527,13 @@ private fun DashboardContent(
                 rightSafeFraction = rightSafeFraction,
                 leftSafeFraction = leftSafeFraction,
             ),
-        onTap = { onAction(HomeAction.OpenMaps) },
+        onTap = {
+            if (uiState.navigationState is io.github.seijikohara.femto.data.navigation.NavigationState.Idle) {
+                overlayAction(HomeAction.OpenDestinations)
+            } else {
+                recenterNonce++
+            }
+        },
         modifier = Modifier.fillMaxSize().hazeSource(hazeState),
         recenterNonce = recenterNonce,
         online = online,
@@ -487,6 +542,13 @@ private fun DashboardContent(
         onOpenLicenses = { onAction(HomeAction.OpenLicenses) },
         mapSurface = mapSurface,
         attributionBottomInset = attributionBottomInset,
+        navigationRouteGeoJson =
+            when (val nav = uiState.navigationState) {
+                is NavigationState.Active -> nav.route.routeGeoJson
+                is NavigationState.RouteSelection -> nav.combinedRouteGeoJson
+                else -> null
+            },
+        onSelectRoute = { onAction(HomeAction.SelectRoute(it)) },
     )
 
     // While a panel is open, the sliver of viewport outside the overlay box —
@@ -545,6 +607,7 @@ private fun DashboardContent(
         onCloseCalendar = { calendarExpanded = false },
         weatherExpanded = weatherExpanded,
         onExpandWeather = { weatherExpanded = true },
+        onOpenVibeSheet = { showMoodSheet = true },
         onCloseWeather = { weatherExpanded = false },
         tripExpanded = tripExpanded,
         onExpandTrip = { tripExpanded = true },
@@ -560,12 +623,30 @@ private fun DashboardContent(
         onCloseApps = { appsExpanded = false },
         destinationExpanded = destinationExpanded,
         onCloseDestination = { destinationExpanded = false },
+        quickSettingsExpanded = quickSettingsExpanded,
+        onCloseQuickSettings = { quickSettingsExpanded = false },
         dismissOpenPanel = dismissOpenPanel,
-        modifier = Modifier.fillMaxSize().padding(dockEdgePadding(dockPosition, dockExtent)),
+        panelDockPadding =
+            if (landscapeCards && dockPosition.hostsHorizontalBar && dockWidth == DockWidth.COMPACT) {
+                dockEdgePadding(dockPosition, dockExtent)
+            } else {
+                PaddingValues()
+            },
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(
+                    if (landscapeCards && dockPosition.hostsHorizontalBar && dockWidth == DockWidth.COMPACT) {
+                        PaddingValues()
+                    } else {
+                        dockEdgePadding(dockPosition, dockExtent)
+                    },
+                ),
         spectrum = spectrum,
         calendarDateOnly = calendarDateOnly,
         musicShowAlbum = musicShowAlbum,
         musicShowArt = musicShowArt,
+        musicCardHeight = musicCardHeight,
         clock = clock,
     )
 
@@ -580,6 +661,7 @@ private fun DashboardContent(
         dockConfig = dockConfig,
         motionTier = motionTier,
         updateBadge = uiState.updateBadge,
+        onDockWidthChanged = { dockWidthPx = it },
         modifier =
             when (dockPosition) {
                 DockPosition.BOTTOM, DockPosition.TOP -> {
@@ -589,7 +671,7 @@ private fun DashboardContent(
                     // width-filling weight-shared bar that shrinks the nav to fit. Centre
                     // alignment centres the pill; the fallback fills the inset band.
                     Modifier
-                        .align(dockAlignment(dockPosition))
+                        .align(dockAlignment(dockPosition, mirror = mirror, landscape = landscapeCards))
                         .padding(dockFloatPadding(dockPosition, outerPad))
                 }
 
@@ -601,6 +683,59 @@ private fun DashboardContent(
                 }
             },
     )
+
+    val dockWidthDp = with(LocalDensity.current) { dockWidthPx.toDp() }
+
+    AnimatedVisibility(
+        visible = showBrightnessSlider,
+        enter = fadeIn(animationSpec = tween(200)) + slideInVertically(animationSpec = tween(200)) { it / 2 },
+        exit = fadeOut(animationSpec = tween(300)) + slideOutVertically(animationSpec = tween(300)) { it / 2 },
+        modifier =
+            Modifier
+                .align(dockAlignment(dockPosition, mirror = mirror, landscape = landscapeCards))
+                .padding(
+                    when (dockPosition) {
+                        DockPosition.BOTTOM -> PaddingValues(
+                            bottom = dockExtent + 8.dp,
+                            start = outerPad,
+                            end = outerPad,
+                        )
+                        DockPosition.TOP -> PaddingValues(
+                            top = dockExtent + 8.dp,
+                            start = outerPad,
+                            end = outerPad,
+                        )
+                        DockPosition.LEFT -> PaddingValues(
+                            start = dockExtent + 8.dp,
+                            bottom = outerPad,
+                        )
+                        DockPosition.RIGHT -> PaddingValues(
+                            end = dockExtent + 8.dp,
+                            bottom = outerPad,
+                        )
+                    }
+                ),
+    ) {
+        HorizontalBrightnessSlider(
+            hazeState = hazeState,
+            glassConfig = glassConfig,
+            onInteraction = {
+                lastBrightnessInteractionTime = SystemClock.uptimeMillis()
+            },
+            modifier = if (dockWidthDp > 0.dp) Modifier.width(dockWidthDp) else Modifier.fillMaxWidth(0.5f),
+        )
+    }
+
+    if (showMoodSheet) {
+        val currentVibe = (uiState.musicState as? MusicCardState.Playing)?.nowPlaying?.queueTitle
+        MusicMoodSheet(
+            currentVibeTitle = currentVibe,
+            onSelectVibe = { vibe -> onAction(HomeAction.PlayMusicVibe(vibe)) },
+            onDismiss = { showMoodSheet = false },
+            fullscreen = fullscreen,
+            isOnline = uiState.systemStatus.isOnline,
+        )
+    }
 }
 
 // The dashboard's glass overlay tree that floats over the map — map controls, the
@@ -656,6 +791,7 @@ private fun DashboardOverlays(
     weatherExpanded: Boolean,
     onExpandWeather: () -> Unit,
     onCloseWeather: () -> Unit,
+    onOpenVibeSheet: () -> Unit = {},
     tripExpanded: Boolean,
     onExpandTrip: () -> Unit,
     onCloseTrip: () -> Unit,
@@ -670,13 +806,17 @@ private fun DashboardOverlays(
     onCloseApps: () -> Unit,
     destinationExpanded: Boolean,
     onCloseDestination: () -> Unit,
+    quickSettingsExpanded: Boolean = false,
+    onCloseQuickSettings: () -> Unit = {},
     // Non-null while any panel is open: the inner outside-tap catcher's action.
     dismissOpenPanel: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    panelDockPadding: PaddingValues = PaddingValues(),
     spectrum: StateFlow<FloatArray?>? = null,
     calendarDateOnly: Boolean = false,
     musicShowAlbum: Boolean = true,
     musicShowArt: Boolean = true,
+    musicCardHeight: MusicCardHeight = MusicCardHeight.NORMAL,
     clock: Clock = Clock.systemDefaultZone(),
 ) {
     // Render-caches for the exit animations, derived from uiState (the expanded
@@ -731,6 +871,8 @@ private fun DashboardOverlays(
                         .padding(outerPad)
                         .testTag(DashboardTags.COMPASS),
             )
+        }
+        if (uiState.location != null) {
             MapControlColumn(
                 showLocate = true,
                 following = following,
@@ -747,35 +889,39 @@ private fun DashboardOverlays(
             )
         }
 
-        // Clock beside the date: in landscape it sits just inside the card column's
-        // outer edge (the top of that column), reading as a pair with the date; in
-        // portrait the column is absent, so it sits in the top corner on the card
-        // side, clear of the bottom cards. Both flip to the opposite corner/edge on a
-        // LEFT driver side.
-        ClockOverlay(
-            is24Hour = is24Hour,
-            showSeconds = showClockSeconds,
-            hazeState = hazeState,
-            glassConfig = glassConfig,
-            motionTier = motionTier,
-            clock = clock,
+        // Navigation HUD floats in the upper center of the exposed map area while active,
+        // clear of the card column on driver side.
+        Box(
             modifier =
                 Modifier
-                    .align(if (mirror) Alignment.TopStart else Alignment.TopEnd)
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
                     .padding(
                         cardSideInset(
                             mirror = mirror,
-                            // The card column's outer margin lives inside floatingCardWidth
-                            // (its width is fixed before the padding applies), so the
-                            // column's on-screen footprint is floatingCardWidth alone —
-                            // adding outerPad on top double-counted the margin and doubled
-                            // the clock <-> cards gap relative to every other panel gap.
-                            horizontal = if (landscapeCards) floatingCardWidth + cardGap else outerPad,
+                            horizontal = if (landscapeCards) floatingCardWidth + cardGap else 0.dp,
                             top = outerPad,
                         ),
-                    ).onSizeChanged { clockSize = it }
-                    .testTag(DashboardTags.CLOCK),
-        )
+                    ),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            NavigationHud(
+                navigationState = uiState.navigationState,
+                is24Hour = is24Hour,
+                hazeState = hazeState,
+                glassConfig = glassConfig,
+                onStopNavigation = { onAction(HomeAction.StopNavigation) },
+                onSelectRoute = { onAction(HomeAction.SelectRoute(it)) },
+                onConfirmRoute = {
+                    onAction(HomeAction.ConfirmRoute)
+                    onRecenter()
+                },
+                modifier = Modifier.testTag("navigation-hud"),
+            )
+        }
+
+        // Clock removed by request: the dashboard no longer renders the clock overlay.
+        // (is24Hour / showClockSeconds / clock stay plumbed through but are unused here.)
 
         // Speed overlay centred in the exposed map area above the dock, held clear of
         // the card column (landscape, on the driver's side) or the bottom card band
@@ -807,9 +953,8 @@ private fun DashboardOverlays(
                             )
                         },
                     ),
-            // Portrait aligns to the band's start edge; landscape centres in the
-            // exposed map strip.
-            contentAlignment = if (bottomCards) Alignment.BottomStart else Alignment.BottomCenter,
+            // Speed numeral pinned to the top-left of the map by request.
+            contentAlignment = Alignment.TopStart,
         ) {
             SpeedOverlay(
                 location = uiState.location,
@@ -846,10 +991,12 @@ private fun DashboardOverlays(
                 onExpandNowPlaying = onExpandNowPlaying,
                 onExpandCalendar = onExpandCalendar,
                 onExpandWeather = onExpandWeather,
+                onOpenVibeSheet = onOpenVibeSheet,
                 spectrum = spectrum,
                 calendarDateOnly = calendarDateOnly,
                 musicShowAlbum = musicShowAlbum,
                 musicShowArt = musicShowArt,
+                musicCardHeight = musicCardHeight,
                 motionTier = motionTier,
                 modifier =
                     if (bottomCards) {
@@ -941,6 +1088,7 @@ private fun DashboardOverlays(
         // button remain the accessible dismiss paths). The dock-margin sliver
         // outside this Box is covered by the outer catcher in DashboardContent,
         // driven by this same [dismissOpenPanel].
+
         if (dismissOpenPanel != null) {
             Box(
                 modifier =
@@ -962,7 +1110,7 @@ private fun DashboardOverlays(
             visible = nowPlayingExpanded && expandedNowPlaying != null,
             enter = Motion.panelEnter(motionTier),
             exit = Motion.panelExit(motionTier),
-            modifier = Modifier.fillMaxSize().padding(outerPad),
+            modifier = Modifier.fillMaxSize().padding(panelDockPadding).padding(outerPad),
         ) {
             panelNowPlaying?.let { nowPlaying ->
                 NowPlayingPanel(
@@ -970,6 +1118,8 @@ private fun DashboardOverlays(
                     onCommand = { command -> onAction(HomeAction.Music(command)) },
                     onLaunchSource = { packageName -> onAction(HomeAction.LaunchMusicSource(packageName)) },
                     onClose = onCloseNowPlaying,
+                    onSelectVibe = { vibe -> onAction(HomeAction.PlayMusicVibe(vibe)) },
+                    onOpenVibeSheet = onOpenVibeSheet,
                     hazeState = hazeState,
                     glassConfig = glassConfig,
                     spectrum = spectrum,
@@ -980,6 +1130,7 @@ private fun DashboardOverlays(
                     // Same motion gate as the card below it: the panel's lines
                     // scroll while parked and rest as an ellipsis once moving.
                     stationary = uiState.tripState.stationary,
+                    isOnline = uiState.systemStatus.isOnline,
                 )
             }
         }
@@ -988,7 +1139,7 @@ private fun DashboardOverlays(
             visible = calendarExpanded && expandedCalendar != null,
             enter = Motion.panelEnter(motionTier),
             exit = Motion.panelExit(motionTier),
-            modifier = Modifier.fillMaxSize().padding(outerPad),
+            modifier = Modifier.fillMaxSize().padding(panelDockPadding).padding(outerPad),
         ) {
             panelCalendar?.let { snapshot ->
                 CalendarPanel(
@@ -1008,7 +1159,7 @@ private fun DashboardOverlays(
             visible = weatherExpanded && expandedWeather != null,
             enter = Motion.panelEnter(motionTier),
             exit = Motion.panelExit(motionTier),
-            modifier = Modifier.fillMaxSize().padding(outerPad),
+            modifier = Modifier.fillMaxSize().padding(panelDockPadding).padding(outerPad),
         ) {
             panelWeather?.let { snapshot ->
                 WeatherPanel(
@@ -1031,7 +1182,7 @@ private fun DashboardOverlays(
             visible = tripExpanded,
             enter = Motion.panelEnter(motionTier),
             exit = Motion.panelExit(motionTier),
-            modifier = Modifier.fillMaxSize().padding(outerPad),
+            modifier = Modifier.fillMaxSize().padding(panelDockPadding).padding(outerPad),
         ) {
             // The trip flyover's native path is a media-overlay SurfaceView that
             // the window fade/scale can't touch, so it would pop out at the end of
@@ -1053,7 +1204,7 @@ private fun DashboardOverlays(
             visible = videoExpanded && video.windowEnabled,
             enter = Motion.panelEnter(motionTier),
             exit = Motion.panelExit(motionTier),
-            modifier = Modifier.fillMaxSize().padding(outerPad),
+            modifier = Modifier.fillMaxSize().padding(panelDockPadding).padding(outerPad),
         ) {
             VideoPanel(
                 state = if (video.windowEnabled) video else panelVideo,
@@ -1074,7 +1225,7 @@ private fun DashboardOverlays(
             visible = appsExpanded,
             enter = Motion.panelEnter(motionTier),
             exit = Motion.panelExit(motionTier),
-            modifier = Modifier.fillMaxSize().padding(outerPad),
+            modifier = Modifier.fillMaxSize().padding(panelDockPadding).padding(outerPad),
         ) {
             AppDrawerPanelHost(
                 onClose = onCloseApps,
@@ -1092,11 +1243,12 @@ private fun DashboardOverlays(
             visible = destinationExpanded,
             enter = Motion.panelEnter(motionTier),
             exit = Motion.panelExit(motionTier),
-            modifier = Modifier.fillMaxSize().padding(outerPad),
+            modifier = Modifier.fillMaxSize().padding(panelDockPadding).padding(outerPad),
         ) {
             DestinationPanelHost(
                 currentPoint = uiState.location?.let { PlaceTarget.Point(it.latitude, it.longitude) },
                 currentAddress = uiState.address?.displayString().orEmpty(),
+                isOnline = uiState.systemStatus.isOnline,
                 onNavigate = { target, label -> onAction(HomeAction.Navigate(target, label)) },
                 onOpenMaps = { onAction(HomeAction.OpenMaps) },
                 onClose = onCloseDestination,
@@ -1105,6 +1257,24 @@ private fun DashboardOverlays(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+
+        // The quick settings panel, opened by tapping the dock's status cluster
+        AnimatedVisibility(
+            visible = quickSettingsExpanded,
+            enter = Motion.panelEnter(motionTier),
+            exit = Motion.panelExit(motionTier),
+            modifier = Modifier.fillMaxSize().padding(panelDockPadding).padding(outerPad),
+        ) {
+            QuickSettingsPanel(
+                systemStatus = uiState.systemStatus,
+                onClose = onCloseQuickSettings,
+                onAction = onAction,
+                hazeState = hazeState,
+                glassConfig = glassConfig,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
     }
 }
 
@@ -1209,12 +1379,35 @@ private fun dockEdgePadding(
     }
 
 // Alignment that pins the dock to its hosting edge within the full-screen box.
-private fun dockAlignment(position: DockPosition): Alignment =
+private fun dockAlignment(
+    position: DockPosition,
+    mirror: Boolean = false,
+    landscape: Boolean = true,
+): Alignment =
     when (position) {
-        DockPosition.BOTTOM -> Alignment.BottomCenter
-        DockPosition.TOP -> Alignment.TopCenter
-        DockPosition.LEFT -> Alignment.CenterStart
-        DockPosition.RIGHT -> Alignment.CenterEnd
+        DockPosition.BOTTOM -> {
+            if (landscape) {
+                if (mirror) Alignment.BottomEnd else Alignment.BottomStart
+            } else {
+                Alignment.BottomCenter
+            }
+        }
+
+        DockPosition.TOP -> {
+            if (landscape) {
+                if (mirror) Alignment.TopEnd else Alignment.TopStart
+            } else {
+                Alignment.TopCenter
+            }
+        }
+
+        DockPosition.LEFT -> {
+            Alignment.CenterStart
+        }
+
+        DockPosition.RIGHT -> {
+            Alignment.CenterEnd
+        }
     }
 
 // Whether the date-only calendar card wraps its head instead of taking the
@@ -1244,12 +1437,14 @@ private fun FloatingCardColumn(
     onExpandNowPlaying: () -> Unit,
     onExpandCalendar: () -> Unit,
     onExpandWeather: () -> Unit,
+    onOpenVibeSheet: () -> Unit = {},
     motionTier: MotionTier,
     modifier: Modifier = Modifier,
     spectrum: StateFlow<FloatArray?>? = null,
     calendarDateOnly: Boolean = false,
     musicShowAlbum: Boolean = true,
     musicShowArt: Boolean = true,
+    musicCardHeight: MusicCardHeight = MusicCardHeight.NORMAL,
 ) {
     val calendar: @Composable (Modifier) -> Unit = { cardModifier ->
         CalendarCard(
@@ -1276,6 +1471,7 @@ private fun FloatingCardColumn(
             modifier = cardModifier,
         )
     }
+    val loneMusic = !panels.calendar && !panels.weather
     val music: @Composable (Modifier) -> Unit = { cardModifier ->
         MusicCard(
             state = uiState.musicState,
@@ -1284,17 +1480,22 @@ private fun FloatingCardColumn(
             onLaunchSource = { packageName -> onAction(HomeAction.LaunchMusicSource(packageName)) },
             onExpand = onExpandNowPlaying,
             onPlay = { onAction(HomeAction.PlayDefaultMusic) },
+            onSelectVibe = { vibe -> onAction(HomeAction.PlayMusicVibe(vibe)) },
+            onOpenVibeSheet = onOpenVibeSheet,
             hazeState = hazeState,
             glassConfig = glassConfig,
             modifier = cardModifier,
             spectrum = spectrum,
             showAlbum = musicShowAlbum,
             showArt = musicShowArt,
+            height = musicCardHeight,
             motionTier = motionTier,
             // Parked, long title / artist / album lines may scroll to full
             // length; moving, they stay a static ellipsis to keep the ambient
             // card glanceable while driving.
             stationary = uiState.tripState.stationary,
+            fillHeight = loneMusic,
+            isOnline = uiState.systemStatus.isOnline,
         )
     }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(cardGap)) {
@@ -1322,10 +1523,13 @@ private fun FloatingCardColumn(
                     .forEach { card -> card(Modifier.weight(1f).fillMaxHeight()) }
             }
         }
-        // The music card sizes to its own content height (no weight): the row above
-        // takes all the remaining column height, so no space is left as an empty band
-        // and the card never stretches past its content on a tall display.
-        if (panels.music) music(Modifier.fillMaxWidth())
+        // The music card sizes to its own content height when paired with calendar / weather,
+        // or stretches to fill the whole column height when it is the lone active card.
+        if (panels.music) {
+            val musicModifier =
+                if (loneMusic) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth()
+            music(musicModifier)
+        }
     }
 }
 

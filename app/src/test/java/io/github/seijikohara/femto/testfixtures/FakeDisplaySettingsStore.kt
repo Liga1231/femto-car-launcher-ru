@@ -19,6 +19,7 @@ import io.github.seijikohara.femto.data.display.MapBackend
 import io.github.seijikohara.femto.data.display.MapColorScheme
 import io.github.seijikohara.femto.data.display.MapStyleSetting
 import io.github.seijikohara.femto.data.display.MotionTier
+import io.github.seijikohara.femto.data.display.MusicCardHeight
 import io.github.seijikohara.femto.data.display.OrientationSetting
 import io.github.seijikohara.femto.data.display.SpeedUnitSetting
 import io.github.seijikohara.femto.data.display.TemperatureUnitSetting
@@ -44,6 +45,8 @@ internal class FakeDisplaySettingsStore(
     override suspend fun setAccentColor(value: AccentColor) = state.update { it.copy(accentColor = value) }
 
     override suspend fun setUiScale(value: UiScale) = state.update { it.copy(uiScale = value) }
+
+    override suspend fun setMusicCardHeight(value: MusicCardHeight) = state.update { it.copy(musicCardHeight = value) }
 
     override suspend fun setSpeedUnit(value: SpeedUnitSetting) = state.update { it.copy(speedUnit = value) }
 
@@ -149,6 +152,12 @@ internal class FakeDisplaySettingsStore(
 
     override suspend fun setMapCustomStyleUrl(value: String) = state.update { it.copy(mapCustomStyleUrl = value) }
 
+    override suspend fun setThemeScheduleEnabled(value: Boolean) = state.update { it.copy(themeScheduleEnabled = value) }
+
+    override suspend fun setThemeScheduleLightHour(value: Int) = state.update { it.copy(themeScheduleLightHour = value) }
+
+    override suspend fun setThemeScheduleDarkHour(value: Int) = state.update { it.copy(themeScheduleDarkHour = value) }
+
     override suspend fun setGoogleMapsTraffic(value: Boolean) = state.update { it.copy(googleMapsTraffic = value) }
 
     // Mirrors DisplayPreferences.resetKeys field-by-field: the real store simply
@@ -170,6 +179,18 @@ internal class FakeDisplaySettingsStore(
         when (key) {
             DisplayPreferences.THEME_KEY -> {
                 copy(themeMode = default.themeMode)
+            }
+
+            DisplayPreferences.THEME_SCHEDULE_ENABLED_KEY -> {
+                copy(themeScheduleEnabled = default.themeScheduleEnabled)
+            }
+
+            DisplayPreferences.THEME_SCHEDULE_LIGHT_HOUR_KEY -> {
+                copy(themeScheduleLightHour = default.themeScheduleLightHour)
+            }
+
+            DisplayPreferences.THEME_SCHEDULE_DARK_HOUR_KEY -> {
+                copy(themeScheduleDarkHour = default.themeScheduleDarkHour)
             }
 
             DisplayPreferences.ACCENT_KEY -> {

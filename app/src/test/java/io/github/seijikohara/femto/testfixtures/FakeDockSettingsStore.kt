@@ -1,5 +1,6 @@
 package io.github.seijikohara.femto.testfixtures
 
+import io.github.seijikohara.femto.data.dock.DEFAULT_NAV_HIDDEN
 import io.github.seijikohara.femto.data.dock.DockNavId
 import io.github.seijikohara.femto.data.dock.DockSettingsStore
 import io.github.seijikohara.femto.data.dock.DockStatusId
@@ -16,7 +17,7 @@ import kotlinx.coroutines.flow.update
  */
 internal class FakeDockSettingsStore : DockSettingsStore {
     private val navOrderState = MutableStateFlow(DockNavId.entries.toList())
-    private val navHiddenState = MutableStateFlow<Set<DockNavId>>(emptySet())
+    private val navHiddenState = MutableStateFlow<Set<DockNavId>>(DEFAULT_NAV_HIDDEN)
     private val statusOrderState = MutableStateFlow(DockStatusId.entries.toList())
     private val statusHiddenState = MutableStateFlow<Set<DockStatusId>>(emptySet())
 
@@ -73,7 +74,7 @@ internal class FakeDockSettingsStore : DockSettingsStore {
 
     override suspend fun resetToDefaults() {
         navOrderState.value = DockNavId.entries.toList()
-        navHiddenState.value = emptySet()
+        navHiddenState.value = DEFAULT_NAV_HIDDEN
         statusOrderState.value = DockStatusId.entries.toList()
         statusHiddenState.value = emptySet()
     }

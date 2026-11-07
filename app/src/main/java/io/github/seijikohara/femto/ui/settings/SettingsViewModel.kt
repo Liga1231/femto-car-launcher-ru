@@ -16,6 +16,8 @@ import io.github.seijikohara.femto.data.common.catchAsDefault
 import io.github.seijikohara.femto.data.display.DisplayPreferences
 import io.github.seijikohara.femto.data.display.DisplaySettingsStore
 import io.github.seijikohara.femto.data.display.MapBackend
+import io.github.seijikohara.femto.data.display.MapStyleSetting
+import io.github.seijikohara.femto.data.display.ThemeMode
 import io.github.seijikohara.femto.data.display.SettingsSectionId
 import io.github.seijikohara.femto.data.dock.DockPreferences
 import io.github.seijikohara.femto.data.dock.DockSettingsStore
@@ -147,6 +149,7 @@ internal class SettingsViewModel(
                 themeMode = display.themeMode,
                 accentColor = display.accentColor,
                 uiScale = display.uiScale,
+                musicCardHeight = display.musicCardHeight,
                 speedUnit = display.speedUnit,
                 temperatureUnit = display.temperatureUnit,
                 clock = display.clock,
@@ -192,6 +195,9 @@ internal class SettingsViewModel(
                 googleMapsTraffic = display.googleMapsTraffic,
                 mapTileHost = display.mapTileHost,
                 mapCustomStyleUrl = display.mapCustomStyleUrl,
+                themeScheduleEnabled = display.themeScheduleEnabled,
+                themeScheduleLightHour = display.themeScheduleLightHour,
+                themeScheduleDarkHour = display.themeScheduleDarkHour,
                 latinFont = font.latin.displayNameOrNull,
                 cjkFont = font.cjk.displayNameOrNull,
                 locationQuality = location.quality,
@@ -306,6 +312,24 @@ internal class SettingsViewModel(
             when (action) {
                 is SettingsAction.SetThemeMode -> {
                     displayPreferences.setThemeMode(action.value)
+                    if (action.value != ThemeMode.SYSTEM) {
+                        displayPreferences.setThemeScheduleEnabled(false)
+                    }
+                }
+
+                is SettingsAction.SetThemeScheduleEnabled -> {
+                    displayPreferences.setThemeScheduleEnabled(action.value)
+                    if (action.value) {
+                        displayPreferences.setMapStyle(MapStyleSetting.AUTO)
+                    }
+                }
+
+                is SettingsAction.SetThemeScheduleLightHour -> {
+                    displayPreferences.setThemeScheduleLightHour(action.value)
+                }
+
+                is SettingsAction.SetThemeScheduleDarkHour -> {
+                    displayPreferences.setThemeScheduleDarkHour(action.value)
                 }
 
                 is SettingsAction.SetAccentColor -> {
@@ -360,6 +384,10 @@ internal class SettingsViewModel(
                     displayPreferences.setUiScale(action.value)
                 }
 
+                is SettingsAction.SetMusicCardHeight -> {
+                    displayPreferences.setMusicCardHeight(action.value)
+                }
+
                 is SettingsAction.SetKeepScreenOn -> {
                     displayPreferences.setKeepScreenOn(action.value)
                 }
@@ -370,6 +398,9 @@ internal class SettingsViewModel(
 
                 is SettingsAction.SetMapStyle -> {
                     displayPreferences.setMapStyle(action.value)
+                    if (action.value != MapStyleSetting.AUTO) {
+                        displayPreferences.setThemeScheduleEnabled(false)
+                    }
                 }
 
                 is SettingsAction.SetMapSchemeLight -> {
@@ -688,6 +719,7 @@ internal class SettingsViewModel(
                         }
 
                         SettingsSectionId.SCREEN,
+                        SettingsSectionId.SCENARIOS,
                         SettingsSectionId.UNITS,
                         SettingsSectionId.MAP,
                         -> {

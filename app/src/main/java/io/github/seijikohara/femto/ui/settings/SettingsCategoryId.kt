@@ -22,6 +22,7 @@ internal enum class SettingsCategoryId(
 ) {
     APPEARANCE(R.string.settings_section_appearance, SettingsSectionId.APPEARANCE),
     SCREEN(R.string.settings_section_screen, SettingsSectionId.SCREEN),
+    SCENARIOS(R.string.settings_section_scenarios, SettingsSectionId.SCENARIOS),
     UNITS(R.string.settings_section_units, SettingsSectionId.UNITS),
     MAP(R.string.settings_section_map, SettingsSectionId.MAP),
     LOCATION(R.string.settings_section_location, SettingsSectionId.LOCATION),
