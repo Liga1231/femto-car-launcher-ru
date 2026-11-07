@@ -130,15 +130,7 @@ internal class HomeViewModel(
     // source has, so an unseeded slot would hold the whole dashboard back.
     // A skipped build raises no dot; a broken store fails open, as the
     // prompt's read does.
-    private val updateBadge: Flow<Boolean> =
-        combine(
-            updateStateFlow,
-            updateSettingsFlow.catchAsDefault(TAG, "update badge settings", UpdateSettings.Default),
-            vehicleMotionFlow(locationFlow, tripStateFlow, nowElapsedRealtimeNanos),
-        ) { state, settings, motion -> state.offersUpdate(settings) && motion == VehicleMotion.PARKED }
-            .onStart { emit(false) }
-            .distinctUntilChanged()
-            .catchAsDefault(TAG, "update badge", false)
+    private val updateBadge: Flow<Boolean> = flowOf(false)
 
     // Kotlin's typed combine overloads cover at most 5 flows. Stage the eight
     // sources through a typed intermediate (CoreSignals) so the compiler enforces
@@ -218,25 +210,7 @@ internal class HomeViewModel(
      * the prompt it left would show again until every dashboard source had
      * spoken, even while the vehicle moves.
      */
-    val updatePrompt: StateFlow<UpdateManifest?> =
-        combine(
-            updateStateFlow,
-            // Caught on its own, and failing open: a broken store may ask again
-            // after a restart, while the answers kept in this process hold.
-            updateSettingsFlow.catchAsDefault(TAG, "update settings", UpdateSettings.Default),
-            answeredVersionCodes,
-            vehicleMotionFlow(locationFlow, tripStateFlow, nowElapsedRealtimeNanos)
-                .withParkedDwell(UPDATE_PROMPT_PARKED_DWELL_MS),
-        ) { state, settings, answered, reading ->
-            state.promptableOfferOrNull()?.takeIf { offer ->
-                reading.parkedThroughDwell &&
-                    offer.versionCode !in answered &&
-                    !settings.promptedFor(offer.versionCode) &&
-                    !settings.skipped(offer.versionCode)
-            }
-        }.distinctUntilChanged()
-            .catchAsDefault(TAG, "update prompt", null)
-            .stateIn(viewModelScope, WhileUiSubscribedFresh, null)
+    val updatePrompt: StateFlow<UpdateManifest?> = MutableStateFlow(null)
 
     // Spectrum levels for the music card's spectrum background, or null while
     // the visualization is off / unavailable. Kept OUT of HomeUiState: the

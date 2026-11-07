@@ -981,9 +981,8 @@ internal class UpdateRepository internal constructor(
         private fun create(context: Context): UpdateRepository {
             val app = context.applicationContext
             val channel = UpdateChannel.fromFlavorOrNull(BuildConfig.FLAVOR)
-            // A flavor outside the known channels has no feed of its own: it
-            // never checks rather than read another channel's.
-            val enabled = BuildConfig.UPDATE_CHECK_ENABLED && channel != null
+            // Updater is completely disabled for offline-first autonomous mode
+            val enabled = false
             val store = UpdatePreferences(app)
             val feedBase = BuildConfig.UPDATE_FEED_BASE_URL
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

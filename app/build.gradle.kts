@@ -94,7 +94,7 @@ val mapTerrainTileJsonUrl =
 val updateFeedBaseUrl =
     localProperties.getProperty(
         "UPDATE_FEED_BASE_URL",
-        "https://github.com/seijikohara/femto-car-launcher/releases",
+        "",
     )
 // Release signing is driven entirely by environment variables so CI can sign
 // both channels' release APKs without committing a keystore, while a local
@@ -167,7 +167,7 @@ android {
         // local build never sets it, so it stays versionCode 1 / debug-signed and
         // must never see "update available" — it would find one and then fail the
         // signature check against the downloaded release APK.
-        buildConfigField("boolean", "UPDATE_CHECK_ENABLED", "${versionCodeEnv != null}")
+        buildConfigField("boolean", "UPDATE_CHECK_ENABLED", "false")
 
         // The native renderer ships only where a Vulkan driver realistically
         // exists: 64-bit ARM devices and the x86_64 emulator. Any other ABI
