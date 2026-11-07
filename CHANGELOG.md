@@ -123,3 +123,10 @@
 * **Immediate GPS teardown on screen off:** Integrated `Intent.ACTION_SCREEN_OFF` / `PowerManager.isInteractive` listener to immediately disconnect platform location listeners and power down the GNSS hardware when display turns off.
 * **Subscriber flow leaks resolved:** Eliminated immortal background coroutines in `HomeViewModel` and `DestinationViewModel` that previously held permanent active requests to `LocationManager` and `ConnectivityManager`.
 * **WebView timer freeze in standby:** Added `pauseTimers()` on `ON_STOP` and `resumeTimers()` on `ON_START` to completely suspend Chromium JS animation frames and intervals while asleep.
+
+### 9. 🗺️ Hybrid Offline Vector Map & Local Search (MBTiles & SQLite)
+* **Online-by-default global operation:** Operates seamlessly via global online APIs (OpenFreeMap, OSRM, Nominatim) across the world out of the box without requiring local map files.
+* **Automatic offline map detection:** When an `.mbtiles` vector archive (such as `bashkortostan.mbtiles` or any `.mbtiles` in `/sdcard/Femto/maps/` or app external storage) is detected, tiles are served locally with zero cellular data consumption.
+* **Offline routing & geocoding:** When disconnected from the internet, transparently falls back to local `search.db` and the built-in road graph for offline turn-by-turn routing and address search.
+* **Bundled fonts & sprites:** Noto Sans SDF glyphs (with full Cyrillic & Latin support) and OpenFreeMap sprites are bundled for complete offline map rendering of street labels, building numbers, and map symbols.
+

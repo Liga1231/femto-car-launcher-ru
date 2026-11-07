@@ -40,7 +40,7 @@
   * Интерактивное окно выбора маршрутов прямо на карте: несколько альтернативных вариантов (расчётное время, расстояние, название основных дорог) и кнопка «Поехали».
   * История недавних мест и поездок (Jetpack DataStore): автоматическое сохранение адресов, быстрый старт навигации в 1 тап, защита от дубликатов, удаление отдельных записей или полная очистка.
   * Полноценный голосовой и текстовый поиск адресов.
-  * Работа карты и навигации онлайн по всему миру (OpenFreeMap, OSRM, Nominatim) без региональных ограничений.
+  * Работа карты и навигации онлайн по всему миру (OpenFreeMap, OSRM, Nominatim) с гибридной поддержкой офлайн-карт: при наличии файла .mbtiles (например, bashkortostan.mbtiles в /sdcard/Femto/maps/) лаунчер мгновенно и автономно отрисовывает векторную карту и ищет адреса офлайн.
 * 🎛️ **Системный трей и управление яркостью в доке:**
   * Всплывающий системный трей при нажатии на статус-бар или кнопку дока: быстрый доступ к громкости, статусу сети и переключателям без вытягивания системной шторки Android, перекрывающей лаунчер.
   * Встроенный слайдер регулировки яркости прямо в доке для мгновенной подстройки подсветки экрана одним свайпом во время вождения.
@@ -78,7 +78,7 @@
   * Interactive route selection dialog directly on the map: multiple route alternatives (estimated time, distance, highway labels) with a one-tap "Go / Start" action.
   * Persistent destination & search history (Jetpack DataStore): automatic destination logging, quick 1-tap navigation start, smart deduplication, individual item deletion, and clear all.
   * Integrated voice and text destination search.
-  * Global online map and navigation powered by OpenFreeMap, OSRM, and Nominatim without local regional limits.
+  * Global online map and navigation powered by OpenFreeMap, OSRM, and Nominatim, with hybrid offline support: automatically loads local .mbtiles vector maps and offline search when map archives are present on device storage (/sdcard/Femto/maps/).
 * 🎛️ **In-App System Tray & Dock Brightness Slider:**
   * Pop-up system tray on status-bar or dock tap: quick access to volume, connectivity status, and toggles without pulling down the disruptive native Android notification shade.
   * Quick screen brightness slider integrated directly into the dock for instant on-the-fly backlight adjustments while driving.

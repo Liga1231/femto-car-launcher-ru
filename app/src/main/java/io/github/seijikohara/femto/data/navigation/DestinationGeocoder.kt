@@ -32,6 +32,9 @@ internal class DestinationGeocoder(
     private val userAgent: String,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    init {
+        OfflineNavigationEngine.appContext = context.applicationContext
+    }
     suspend fun resolveTarget(target: PlaceTarget): PlaceTarget.Point? =
         when (target) {
             is PlaceTarget.Point -> target
@@ -142,6 +145,12 @@ internal class DestinationGeocoder(
                 if (point != null) {
                     return@withContext point
                 }
+            }
+
+            // 3. Fallback to offline local gazetteer and search.db
+            val offlinePoint = OfflineNavigationEngine.searchPlaces(trimmed, maxResults = 1).firstOrNull()?.point
+            if (offlinePoint != null) {
+                return@withContext offlinePoint
             }
 
             null
@@ -286,10 +295,16 @@ internal class DestinationGeocoder(
                 Log.w(TAG, "Nominatim suggestion search failed", it)
             }
 
-            results
+            val filtered = results
                 .filter { isRussianLocation(it.title, it.subtitle, it.point.latitude, it.point.longitude) }
                 .distinctBy { "${it.title.lowercase(Locale.ROOT)}_${it.subtitle.lowercase(Locale.ROOT)}" }
                 .take(maxResults)
+
+            if (filtered.isNotEmpty()) {
+                filtered
+            } else {
+                OfflineNavigationEngine.searchPlaces(query, maxResults)
+            }
         }
 
     private fun formatAddressTitle(

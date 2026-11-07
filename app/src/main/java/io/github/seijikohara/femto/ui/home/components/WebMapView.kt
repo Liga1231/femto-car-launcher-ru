@@ -8,6 +8,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.util.LruCache
+import io.github.seijikohara.femto.data.map.OfflineTileProvider
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -153,6 +155,7 @@ internal fun WebMapView(
     onSelectRoute: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val offlineTileProvider = remember { OfflineTileProvider(context) }
     // The bridge object below is registered once per WebView instance and would
     // otherwise capture the first composition's lambdas forever.
     val currentOnFollowChange by rememberUpdatedState(onFollowChange)
@@ -517,7 +520,7 @@ internal fun WebMapView(
     // rebuild waits for the launcher (the renderer effect) leaves an empty map
     // region instead: it must leave the composition at once, since any call on
     // it can crash.
-    val noticeShown = rendererGaveUp || liveInitFailed || googleMapsKeyMissing
+    val noticeShown = rendererGaveUp || (liveInitFailed && !offlineTileProvider.isAvailable()) || googleMapsKeyMissing
     if (noticeShown || rendererRebuildDue) {
         Box(modifier = modifier) {
             if (noticeShown) {
@@ -590,6 +593,8 @@ internal fun WebMapView(
                     LiveMapWebViewClient(
                         context = context,
                         assetLoader = assetLoader,
+                        offlineTileProvider = offlineTileProvider,
+                        isOnline = { online },
                         onPageLoaded = { pageReady.value = true },
                         onRendererDeath = { view, crashed ->
                             val description = if (crashed) "renderer crashed" else "renderer killed by the system"
@@ -634,7 +639,12 @@ internal fun WebMapView(
                         // default — walked by the host rotation so a dead host gives
                         // way to the next on the following reload (tileHostAt).
                         @JavascriptInterface
-                        fun tileHost(): String = tileHostAt(tileHosts, tileHostRotation.intValue)
+                        fun tileHost(): String =
+                            if (offlineTileProvider.isAvailable()) {
+                                "https://appassets.androidplatform.net/offline-tiles"
+                            } else {
+                                tileHostAt(tileHosts, tileHostRotation.intValue)
+                            }
 
                         // The raster-DEM TileJSON the page injects while the Terrain
                         // switch is on; a build-time endpoint (MAP_TERRAIN_TILEJSON_URL).
@@ -963,9 +973,13 @@ internal fun WebMapView(
 internal class LiveMapWebViewClient(
     private val context: Context,
     private val assetLoader: WebViewAssetLoader,
+    private val offlineTileProvider: OfflineTileProvider = OfflineTileProvider(context),
+    private val isOnline: () -> Boolean = { true },
     private val onPageLoaded: () -> Unit,
     private val onRendererDeath: (view: WebView, crashed: Boolean) -> Unit,
 ) : WebViewClientCompat() {
+    private val onlineTileCache = object : LruCache<String, ByteArray>(128) {}
+
     // A tap on an attribution link (MapLibre's control under a custom style,
     // or Google's in-page credits) must not navigate this WebView off the map
     // page — it would sit on a web page until the next reload. Anything that
@@ -990,7 +1004,196 @@ internal class LiveMapWebViewClient(
     override fun shouldInterceptRequest(
         view: WebView,
         request: WebResourceRequest,
-    ): WebResourceResponse? = assetLoader.shouldInterceptRequest(request.url)
+    ): WebResourceResponse? {
+        val path = request.url.path ?: ""
+
+        if (path.contains("/styles/")) {
+            val styleName = path.substringAfterLast('/').substringBefore('?')
+            if (isOnline()) {
+                try {
+                    val url = java.net.URL("https://tiles.openfreemap.org/styles/$styleName")
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 3000
+                    conn.readTimeout = 3000
+                    conn.requestMethod = "GET"
+                    if (conn.responseCode == 200) {
+                        return WebResourceResponse(
+                            "application/json",
+                            "UTF-8",
+                            200,
+                            "OK",
+                            mapOf(
+                                "Access-Control-Allow-Origin" to "*",
+                                "Access-Control-Allow-Methods" to "GET, OPTIONS",
+                            ),
+                            conn.inputStream,
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Online style fetch failed for $styleName, falling back to local asset", e)
+                }
+            }
+            val isDarkStyle = styleName.contains("dark", ignoreCase = true) || styleName.contains("fiord", ignoreCase = true)
+            val assetPath = if (isDarkStyle) "map/dark.json" else "map/light.json"
+            try {
+                val stream = context.assets.open(assetPath)
+                return WebResourceResponse(
+                    "application/json",
+                    "UTF-8",
+                    200,
+                    "OK",
+                    mapOf(
+                        "Access-Control-Allow-Origin" to "*",
+                        "Access-Control-Allow-Methods" to "GET, OPTIONS",
+                    ),
+                    stream,
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load fallback asset style $assetPath", e)
+            }
+        }
+
+        if (offlineTileProvider.isAvailable()) {
+            if (path.contains("/fonts/")) {
+                val decoded = runCatching { java.net.URLDecoder.decode(request.url.toString(), "UTF-8") }.getOrDefault(path)
+                val filename = decoded.substringAfterLast('/')
+                val fontName = when {
+                    decoded.contains("Bold", ignoreCase = true) -> "Noto Sans Bold"
+                    decoded.contains("Italic", ignoreCase = true) -> "Noto Sans Italic"
+                    else -> "Noto Sans Regular"
+                }
+                try {
+                    val stream = context.assets.open("map/fonts/$fontName/$filename")
+                    return WebResourceResponse(
+                        "application/x-protobuf",
+                        null,
+                        200,
+                        "OK",
+                        mapOf(
+                            "Access-Control-Allow-Origin" to "*",
+                            "Access-Control-Allow-Methods" to "GET, OPTIONS",
+                        ),
+                        stream,
+                    )
+                } catch (e: Exception) {
+                    try {
+                        val stream = context.assets.open("map/fonts/Noto Sans Regular/$filename")
+                        return WebResourceResponse(
+                            "application/x-protobuf",
+                            null,
+                            200,
+                            "OK",
+                            mapOf("Access-Control-Allow-Origin" to "*"),
+                            stream,
+                        )
+                    } catch (_: Exception) {}
+                }
+            }
+
+            if (path.contains("/sprites/")) {
+                val filename = path.substringAfterLast('/')
+                try {
+                    val stream = context.assets.open("map/sprites/$filename")
+                    val mime = if (filename.endsWith(".json")) "application/json" else "image/png"
+                    return WebResourceResponse(
+                        mime,
+                        null,
+                        200,
+                        "OK",
+                        mapOf(
+                            "Access-Control-Allow-Origin" to "*",
+                            "Access-Control-Allow-Methods" to "GET, OPTIONS",
+                        ),
+                        stream,
+                    )
+                } catch (_: Exception) {}
+            }
+
+            if (path.endsWith("/planet") || path.endsWith("/planet.json") || path.contains("tilejson")) {
+                val tileJson = offlineTileProvider.getTileJson("https://appassets.androidplatform.net/offline-tiles/tiles/{z}/{x}/{y}.pbf")
+                return WebResourceResponse(
+                    "application/json",
+                    "UTF-8",
+                    200,
+                    "OK",
+                    mapOf("Access-Control-Allow-Origin" to "*"),
+                    tileJson.byteInputStream(),
+                )
+            }
+
+            val tileMatch = Regex("""^.*/(?:planet|tiles|offline-tiles/tiles)/(\d+)/(\d+)/(\d+)\.pbf$""").find(path) ?: Regex("""^.*/(\d+)/(\d+)/(\d+)\.pbf$""").find(path)
+            if (tileMatch != null) {
+                val (z, x, y) = tileMatch.destructured
+                val pbf = offlineTileProvider.getTile(z.toInt(), x.toInt(), y.toInt())
+                if (pbf != null && pbf.isNotEmpty()) {
+                    val isGzip = pbf.size >= 2 && pbf[0] == 0x1f.toByte() && pbf[1] == 0x8b.toByte()
+                    val headers = mutableMapOf(
+                        "Content-Type" to "application/x-protobuf",
+                        "Access-Control-Allow-Origin" to "*",
+                    )
+                    if (isGzip) {
+                        headers["Content-Encoding"] = "gzip"
+                    }
+                    return WebResourceResponse("application/x-protobuf", null, 200, "OK", headers, pbf.inputStream())
+                } else if (isOnline()) {
+                    val tileKey = "$z/$x/$y"
+                    val cached = onlineTileCache.get(tileKey)
+                    if (cached != null) {
+                        return WebResourceResponse(
+                            "application/x-protobuf",
+                            null,
+                            200,
+                            "OK",
+                            mapOf(
+                                "Content-Type" to "application/x-protobuf",
+                                "Access-Control-Allow-Origin" to "*",
+                            ),
+                            cached.inputStream(),
+                        )
+                    }
+                    try {
+                        val url = java.net.URL("https://tiles.openfreemap.org/tiles/$z/$x/$y.pbf")
+                        val conn = url.openConnection() as java.net.HttpURLConnection
+                        conn.connectTimeout = 3000
+                        conn.readTimeout = 3000
+                        conn.requestMethod = "GET"
+                        if (conn.responseCode == 200) {
+                            val bytes = conn.inputStream.use { it.readBytes() }
+                            onlineTileCache.put(tileKey, bytes)
+                            val encoding = conn.contentEncoding
+                            val headers = mutableMapOf(
+                                "Content-Type" to "application/x-protobuf",
+                                "Access-Control-Allow-Origin" to "*",
+                            )
+                            if (!encoding.isNullOrBlank()) {
+                                headers["Content-Encoding"] = encoding
+                            }
+                            return WebResourceResponse("application/x-protobuf", null, 200, "OK", headers, bytes.inputStream())
+                        }
+                    } catch (_: Exception) {}
+                    return WebResourceResponse(
+                        "application/x-protobuf",
+                        null,
+                        204,
+                        "No Content",
+                        mapOf("Access-Control-Allow-Origin" to "*"),
+                        null,
+                    )
+                } else {
+                    return WebResourceResponse(
+                        "application/x-protobuf",
+                        null,
+                        204,
+                        "No Content",
+                        mapOf("Access-Control-Allow-Origin" to "*"),
+                        null,
+                    )
+                }
+            }
+        }
+
+        return assetLoader.shouldInterceptRequest(request.url)
+    }
 
     override fun onPageFinished(
         view: WebView,
