@@ -278,16 +278,8 @@ internal object OfflineNavigationEngine {
     )
 
     fun calculateHouseCoordinate(baseLat: Double, baseLon: Double, houseStr: String): Pair<Double, Double> {
-        val num = houseStr.filter { it.isDigit() }.toIntOrNull() ?: 1
-        val isOdd = (num % 2) != 0
-        val side = if (isOdd) 1.0 else -1.0
-        val step = (num / 2) * 0.00022
-        val perp = side * 0.00012
-        val cosA = 0.7071
-        val sinA = 0.7071
-        val dLat = step * cosA - perp * sinA
-        val dLon = (step * sinA + perp * cosA) / max(0.2, cos(Math.toRadians(baseLat)))
-        return Pair(baseLat + dLat, baseLon + dLon)
+        // Return actual street coordinate centroid without synthetic diagonal displacement
+        return Pair(baseLat, baseLon)
     }
 
     fun getStreetHouses(houseFilter: String?): List<String> {

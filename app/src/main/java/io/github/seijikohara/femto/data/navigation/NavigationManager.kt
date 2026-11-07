@@ -82,27 +82,14 @@ internal class NavigationManager(
                     destinationLabel = destLabel,
                 )
 
-                val effectiveRoutes = if (routes.isNotEmpty()) {
-                    routes
-                } else {
-                    val offlineRoute = OfflineNavigationEngine.calculateRoute(
-                        startLat = startLoc.latitude,
-                        startLon = startLoc.longitude,
-                        destLat = destPoint.latitude,
-                        destLon = destPoint.longitude,
-                        destinationLabel = destLabel,
-                    )
-                    if (offlineRoute != null) listOf(offlineRoute) else emptyList()
-                }
-
-                if (effectiveRoutes.isEmpty()) {
-                    _state.value = NavigationState.Error("Навигация доступна только онлайн", destLabel)
+                if (routes.isEmpty()) {
+                    _state.value = NavigationState.Error("Маршрут не найден или нет подключения к сети", destLabel)
                     return@launch
                 }
 
                 // Show route preview with alternatives on map & HUD!
                 _state.value = NavigationState.RouteSelection(
-                    routes = effectiveRoutes,
+                    routes = routes,
                     selectedIndex = 0,
                     destinationLabel = destLabel,
                 )
@@ -184,15 +171,45 @@ internal class NavigationManager(
             0.0
         }
 
-        if (distanceToStep <= STEP_ADVANCE_DISTANCE_METERS && stepIndex < route.steps.lastIndex) {
-            stepIndex++
-            val nextStep = route.steps[stepIndex]
-            distanceToStep = computeDistance(
+        // Advance maneuver step if within 35m, or if progressed past the maneuver towards next step along polyline
+        if (stepIndex < route.steps.lastIndex) {
+            val nextStep = route.steps[stepIndex + 1]
+            val distToNext = computeDistance(
                 location.latitude,
                 location.longitude,
                 nextStep.latitude,
                 nextStep.longitude,
             )
+            val stepSegmentDistance = if (currentStep != null) {
+                computeDistance(
+                    currentStep.latitude,
+                    currentStep.longitude,
+                    nextStep.latitude,
+                    nextStep.longitude,
+                )
+            } else {
+                Double.MAX_VALUE
+            }
+
+            val passedManeuver = if (currentStep != null && stepSegmentDistance > 10.0) {
+                val distToSegment = distanceToSegmentMeters(
+                    location.latitude,
+                    location.longitude,
+                    currentStep.latitude,
+                    currentStep.longitude,
+                    nextStep.latitude,
+                    nextStep.longitude,
+                )
+                // Passed if vehicle is within 45m of the step segment and closer to next step than segment length
+                distToSegment <= 45.0 && distToNext < stepSegmentDistance && distToNext < distanceToStep
+            } else {
+                false
+            }
+
+            if (distanceToStep <= STEP_ADVANCE_DISTANCE_METERS || passedManeuver) {
+                stepIndex++
+                distanceToStep = distToNext
+            }
         }
 
         // 3. Off-route detection (point-to-segment distance to polyline)
@@ -207,13 +224,13 @@ internal class NavigationManager(
             return
         }
 
-        // 4. Update progress and ETA
-        val remainingStepsDistance = route.steps
-            .drop(stepIndex + 1)
-            .sumOf { it.distanceMeters } + distanceToStep
+        // 4. Update progress and ETA (distance to upcoming maneuver + all remaining steps)
+        val remainingStepsDistance = distanceToStep + route.steps
+            .drop(stepIndex)
+            .sumOf { it.distanceMeters }
 
         val remainingRatio = if (route.totalDistanceMeters > 0) {
-            (remainingStepsDistance / route.totalDistanceMeters).coerceIn(0.0, 1.0)
+            (remainingStepsDistance / route.totalDistanceMeters).coerceIn(0.0, 2.0)
         } else {
             0.0
         }
@@ -238,12 +255,6 @@ internal class NavigationManager(
         currentRouteJob = scope.launch {
             try {
                 val newRoute = routingApi.calculateRoute(
-                    startLat = currentLocation.latitude,
-                    startLon = currentLocation.longitude,
-                    destLat = route.destination.latitude,
-                    destLon = route.destination.longitude,
-                    destinationLabel = route.destinationLabel,
-                ) ?: OfflineNavigationEngine.calculateRoute(
                     startLat = currentLocation.latitude,
                     startLon = currentLocation.longitude,
                     destLat = route.destination.latitude,
