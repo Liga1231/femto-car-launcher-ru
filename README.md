@@ -66,7 +66,7 @@
   * **Лаунчер полностью работает БЕЗ Root-прав** — карты, навигация, виджеты, сценарии, слайдер яркости и Яндекс Музыка работают на любом стандартном устройстве из коробки.
   * **Root-права строго опциональны** и используются исключительно для системных функций:
     * Прямое аппаратное переключение Wi-Fi, Bluetooth, мобильных данных и GPS в системном трее без перехода в стандартные настройки Android.
-    * Кнопки быстрой перезагрузки (Reboot) и выключения устройства (Power Off) прямо из шторки лаунчера.
+    * Кнопки перезагрузки (Reboot) и выключения устройства (Power Off) прямо из шторки лаунчера (защищены диалогом подтверждения и блокируются во время движения).
     * Аппаратная блокировка выпадания стандартной шторки Android (`cmd statusbar collapse`).
     * На устройствах без Root эти действия безопасно игнорируются, не вызывая ошибок или сбоев приложения.
 
@@ -104,7 +104,7 @@
   * **The launcher runs completely WITHOUT Root** — maps, in-app navigation, media controls, Yandex Music, widgets, solar scenarios, and brightness adjustments work out-of-the-box on standard unrooted devices.
   * **Root permissions are strictly optional** and only used for advanced system management:
     * Direct privileged hardware toggles for Wi-Fi, Bluetooth, Mobile Data, and GPS from the quick settings panel without redirecting to system settings.
-    * Instant Reboot and Power Off actions inside the system tray.
+    * Privileged Reboot and Power Off actions inside the system tray (protected by confirmation dialogs and motion-gated while driving).
     * Enforced status-bar / notification shade pull-down lockdown (`cmd statusbar collapse`).
     * On unrooted devices, these actions gracefully degrade with zero crashes or errors.
 
@@ -177,27 +177,23 @@ The dashboard layout does not change with vehicle motion, and the launcher has n
 
 ## Installation
 
-Femto Car Launcher publishes two channels as release-signed APKs, both built from this repository by continuous integration:
+Femto Car Launcher RU is distributed as standalone release-signed APKs:
 
-- **Stable**: a dated release that changes only when the maintainer promotes a build, published as a [GitHub release](https://github.com/seijikohara/femto-car-launcher/releases/latest). Download `femto-car-launcher-v<version>.apk` from the latest release.
-- **Nightly**: a nightly build that changes often and may break, published as a rolling [`nightly`](https://github.com/seijikohara/femto-car-launcher/releases/tag/nightly) prerelease that replaces itself on every push that changes the APK. Download `femto-car-launcher-nightly.apk`. Its launcher icon carries an "N" badge and its app name reads "Femto Nightly", so the two channels are distinguishable on the device.
-
-The two channels use different application IDs and install side by side, so a nightly build installs without removing the stable build. Install either APK by sideloading on the device, or from a computer with Android Debug Bridge: `adb install -r <file>.apk`. Play Store publication is not planned at present; sideloading is the supported installation path. Android 13 or later is required.
-
-The app checks for updates automatically; the [install guide](https://seijikohara.github.io/femto-car-launcher/install/) describes the update flow.
-
-To enable the optional paid Google Maps provider, enter a personal Google Maps Platform API key in **Settings → Map**. The key needs the Maps JavaScript API enabled and an HTTP-referrer restriction that allows `https://appassets.androidplatform.net/*`. The **Settings → Map → Rendering** setting (Automatic, Raster, or Vector) chooses heading-up vector or flat north-up raster rendering; the Map ID does not. Vector needs no Map ID. On a device with no Web Graphics Library (WebGL) context, Vector shows a notice instead of a map; choose Raster or Automatic there. Automatic follows the Map ID's cloud configuration and renders raster when none is set. An optional Map ID, created in the Google Cloud console, adds cloud styling and advanced markers.
+- **Release APK**: download `femto-car-launcher-ru.apk` from the latest [GitHub release](https://github.com/Liga1231/femto-car-launcher-ru/releases/latest).
+- Install the APK by sideloading on the device, or from a computer via Android Debug Bridge (ADB):
+  ```bash
+  adb install -r femto-car-launcher-ru.apk
+  ```
+- Supported Android versions: **Android 10, 11, 12, 13+ (API level 29+)**. Both 32-bit (`armeabi-v7a`) and 64-bit (`arm64-v8a`) automotive devices are supported.
 
 ## Building from source
 
-The build needs a Java Development Kit (JDK) 25, the Android software development kit (SDK), and an Android 13+ device or emulator. The Gradle build provisions Node.js and pnpm on demand for the bundled map page.
+The build needs a Java Development Kit (JDK) 21/25, the Android SDK, and an Android 10+ device or emulator. The Gradle build provisions Node.js and pnpm on demand for the bundled map page.
 
 ```bash
 ./gradlew assembleStableDebug   # debug APK at app/build/outputs/apk/stable/debug/
-./gradlew test lint             # unit tests and Android Lint
+./gradlew assembleStableRelease # release APK at app/build/outputs/apk/stable/release/
 ```
-
-[`CONTRIBUTING.md`](CONTRIBUTING.md) explains how to report bugs, propose features, and submit changes; the coding rules and verification commands live in [`AGENTS.md`](AGENTS.md) and `.claude/rules/`.
 
 ## License
 
