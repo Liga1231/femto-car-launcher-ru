@@ -12,26 +12,39 @@ import kotlinx.coroutines.withContext
 internal object RootShell {
     private const val TAG = "RootShell"
 
-    fun run(command: String): Boolean {
+    fun run(command: String, timeoutMs: Long = 1500L): Boolean {
         return try {
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
-            val exit = process.waitFor()
-            exit == 0
+            val finished = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+            } else {
+                process.waitFor() == 0
+                true
+            }
+            if (!finished) {
+                process.destroy()
+                return false
+            }
+            process.exitValue() == 0
         } catch (e: Exception) {
             Log.w(TAG, "Root command failed: $command", e)
             false
         }
     }
 
-    suspend fun runAsync(command: String): Boolean = withContext(Dispatchers.IO) {
-        run(command)
+    suspend fun runAsync(command: String, timeoutMs: Long = 1500L): Boolean = withContext(Dispatchers.IO) {
+        run(command, timeoutMs)
     }
 
     fun runOut(command: String): String {
         return try {
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
             val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
-            process.waitFor()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                process.waitFor(1500L, java.util.concurrent.TimeUnit.MILLISECONDS)
+            } else {
+                process.waitFor()
+            }
             output
         } catch (e: Exception) {
             Log.w(TAG, "Root command out failed: $command", e)
@@ -45,7 +58,11 @@ internal object RootShell {
      * are completely disabled by Android's StatusBarManager.
      */
     fun lockStatusBar(lock: Boolean) {
-        run("cmd statusbar send-disable-flag none")
+        if (lock) {
+            run("cmd statusbar send-disable-flag expand")
+        } else {
+            run("cmd statusbar send-disable-flag none")
+        }
     }
 
     suspend fun lockStatusBarAsync(lock: Boolean) = withContext(Dispatchers.IO) {

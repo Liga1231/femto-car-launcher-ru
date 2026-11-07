@@ -107,12 +107,13 @@ class MainActivity : ComponentActivity() {
     // bars would otherwise stay visible after returning from an external app.
     private var fullscreenSetting = FullscreenSetting.OFF
 
-    private var trayOpenedTimestamp: Long = 0L
+    private var trayCloseJob: Job? = null
 
-    private fun scheduleTrayClose(delayMs: Long = 3000L) {
-        lifecycleScope.launch(Dispatchers.IO) {
+    private fun scheduleTrayClose(delayMs: Long = 2500L) {
+        trayCloseJob?.cancel()
+        trayCloseJob = lifecycleScope.launch(Dispatchers.IO) {
             delay(delayMs)
-            RootShell.run("cmd statusbar collapse")
+            RootShell.run("cmd statusbar collapse", 1500L)
             withContext(Dispatchers.Main) {
                 if (fullscreenSetting == FullscreenSetting.ON) {
                     applyFullscreen(FullscreenSetting.ON)
@@ -122,8 +123,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
-        if (ev?.action == MotionEvent.ACTION_DOWN || ev?.action == MotionEvent.ACTION_UP) {
-            scheduleTrayClose(3000L)
+        if (ev?.action == MotionEvent.ACTION_DOWN) {
+            scheduleTrayClose(2500L)
         }
         return super.dispatchTouchEvent(ev)
     }
@@ -182,24 +183,6 @@ class MainActivity : ComponentActivity() {
                 .map { it.fullscreen }
                 .distinctUntilChanged()
                 .collect { fullscreenSetting = it }
-        }
-        lifecycleScope.launch(Dispatchers.IO) {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (true) {
-                    delay(500L)
-                    val now = System.currentTimeMillis()
-                    val opened = trayOpenedTimestamp
-                    if (opened > 0 && now - opened >= 3000L) {
-                        trayOpenedTimestamp = 0L
-                        RootShell.run("cmd statusbar collapse")
-                        withContext(Dispatchers.Main) {
-                            if (fullscreenSetting == FullscreenSetting.ON) {
-                                applyFullscreen(FullscreenSetting.ON)
-                            }
-                        }
-                    }
-                }
-            }
         }
         setContent {
             // User display settings override the locale/system defaults; the theme
@@ -480,20 +463,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        trayOpenedTimestamp = 0L
+        trayCloseJob?.cancel()
+        trayCloseJob = null
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            trayOpenedTimestamp = 0L
+            trayCloseJob?.cancel()
+            trayCloseJob = null
             if (fullscreenSetting == FullscreenSetting.ON) {
                 applyFullscreen(FullscreenSetting.ON)
             }
         } else {
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-                trayOpenedTimestamp = System.currentTimeMillis()
-                scheduleTrayClose(3000L)
+                scheduleTrayClose(2500L)
             }
         }
     }
