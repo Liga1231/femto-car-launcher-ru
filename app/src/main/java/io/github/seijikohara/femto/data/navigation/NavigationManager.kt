@@ -66,7 +66,7 @@ internal class NavigationManager(
         currentRouteJob?.cancel()
         _state.value = NavigationState.Loading(destLabel)
 
-        currentRouteJob = scope.launch {
+        currentRouteJob = scope.launch(Dispatchers.Default) {
             try {
                 val destPoint = destinationGeocoder.resolveTarget(target)
                 if (destPoint == null) {
@@ -74,22 +74,16 @@ internal class NavigationManager(
                     return@launch
                 }
 
-                // Calculate route: OFFLINE FIRST if available for regional coordinates
+                val isOnline = NetworkMonitor.isOnline()
                 val canUseOffline = OfflineNavigationEngine.isOfflineRoutingAvailable() &&
                     OfflineNavigationEngine.isInBashkortostan(startLoc.latitude, startLoc.longitude) &&
                     OfflineNavigationEngine.isInBashkortostan(destPoint.latitude, destPoint.longitude)
 
-                val effectiveRoutes = if (canUseOffline) {
-                    val offlineRoutes = OfflineNavigationEngine.calculateRoutesFromDatabase(
-                        startLat = startLoc.latitude,
-                        startLon = startLoc.longitude,
-                        destLat = destPoint.latitude,
-                        destLon = destPoint.longitude,
-                        destinationLabel = destLabel,
-                    )
-                    if (offlineRoutes.isNotEmpty()) {
-                        offlineRoutes
-                    } else if (NetworkMonitor.isOnline()) {
+                Log.d(TAG, "calculateRoutes: isOnline=$isOnline, canUseOffline=$canUseOffline")
+
+                val effectiveRoutes = if (isOnline) {
+                    // 1. ONLINE FIRST: fast server routing (150-300ms) with multiple route choices
+                    val onlineRoutes = runCatching {
                         routingApi.calculateRoutes(
                             startLat = startLoc.latitude,
                             startLon = startLoc.longitude,
@@ -97,37 +91,34 @@ internal class NavigationManager(
                             destLon = destPoint.longitude,
                             destinationLabel = destLabel,
                         )
-                    } else {
-                        emptyList()
-                    }
-                } else if (NetworkMonitor.isOnline()) {
-                    val onlineRoutes = routingApi.calculateRoutes(
-                        startLat = startLoc.latitude,
-                        startLon = startLoc.longitude,
-                        destLat = destPoint.latitude,
-                        destLon = destPoint.longitude,
-                        destinationLabel = destLabel,
-                    )
+                    }.getOrDefault(emptyList())
+
                     if (onlineRoutes.isNotEmpty()) {
+                        Log.d(TAG, "Successfully obtained ${onlineRoutes.size} online routes from server")
                         onlineRoutes
-                    } else if (OfflineNavigationEngine.isOfflineRoutingAvailable()) {
+                    } else if (canUseOffline) {
+                        Log.d(TAG, "Online routes unavailable/empty, falling back to offline database")
                         OfflineNavigationEngine.calculateRoutesFromDatabase(
                             startLat = startLoc.latitude,
                             startLon = startLoc.longitude,
                             destLat = destPoint.latitude,
                             destLon = destPoint.longitude,
                             destinationLabel = destLabel,
+                            numRoutes = 1,
                         )
                     } else {
                         emptyList()
                     }
-                } else if (OfflineNavigationEngine.isOfflineRoutingAvailable()) {
+                } else if (canUseOffline) {
+                    // 2. OFFLINE FALLBACK: calculate route locally
+                    Log.d(TAG, "Offline mode: calculating route via local SQLite engine")
                     OfflineNavigationEngine.calculateRoutesFromDatabase(
                         startLat = startLoc.latitude,
                         startLon = startLoc.longitude,
                         destLat = destPoint.latitude,
                         destLon = destPoint.longitude,
                         destinationLabel = destLabel,
+                        numRoutes = 1,
                     )
                 } else {
                     emptyList()
@@ -303,20 +294,15 @@ internal class NavigationManager(
         route: NavigationRoute,
     ) {
         currentRouteJob?.cancel()
-        currentRouteJob = scope.launch {
+        currentRouteJob = scope.launch(Dispatchers.Default) {
             try {
+                val isOnline = NetworkMonitor.isOnline()
                 val canUseOffline = OfflineNavigationEngine.isOfflineRoutingAvailable() &&
                     OfflineNavigationEngine.isInBashkortostan(currentLocation.latitude, currentLocation.longitude) &&
                     OfflineNavigationEngine.isInBashkortostan(route.destination.latitude, route.destination.longitude)
 
-                val newRoute = if (canUseOffline) {
-                    OfflineNavigationEngine.calculateRouteFromDatabase(
-                        startLat = currentLocation.latitude,
-                        startLon = currentLocation.longitude,
-                        destLat = route.destination.latitude,
-                        destLon = route.destination.longitude,
-                        destinationLabel = route.destinationLabel,
-                    ) ?: if (NetworkMonitor.isOnline()) {
+                val newRoute = if (isOnline) {
+                    val online = runCatching {
                         routingApi.calculateRoute(
                             startLat = currentLocation.latitude,
                             startLon = currentLocation.longitude,
@@ -324,15 +310,8 @@ internal class NavigationManager(
                             destLon = route.destination.longitude,
                             destinationLabel = route.destinationLabel,
                         )
-                    } else null
-                } else if (NetworkMonitor.isOnline()) {
-                    routingApi.calculateRoute(
-                        startLat = currentLocation.latitude,
-                        startLon = currentLocation.longitude,
-                        destLat = route.destination.latitude,
-                        destLon = route.destination.longitude,
-                        destinationLabel = route.destinationLabel,
-                    ) ?: if (OfflineNavigationEngine.isOfflineRoutingAvailable()) {
+                    }.getOrNull()
+                    online ?: if (canUseOffline) {
                         OfflineNavigationEngine.calculateRouteFromDatabase(
                             startLat = currentLocation.latitude,
                             startLon = currentLocation.longitude,
@@ -341,7 +320,7 @@ internal class NavigationManager(
                             destinationLabel = route.destinationLabel,
                         )
                     } else null
-                } else if (OfflineNavigationEngine.isOfflineRoutingAvailable()) {
+                } else if (canUseOffline) {
                     OfflineNavigationEngine.calculateRouteFromDatabase(
                         startLat = currentLocation.latitude,
                         startLon = currentLocation.longitude,

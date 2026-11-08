@@ -868,6 +868,50 @@ internal object OfflineNavigationEngine {
 
     private var cachedRestrictions: Map<Pair<Long, Long>, List<Pair<String, Long>>>? = null
 
+    data class RoadOutEdge(
+        val v: Long,
+        val lenM: Double,
+        val speed: Double,
+        val rName: String,
+        val rType: String,
+        val outWay: Long,
+        val vLat: Double,
+        val vLon: Double,
+    )
+
+    private val roadEdgesCache = android.util.LruCache<Long, List<RoadOutEdge>>(25000)
+
+    private fun getOutEdgesForNode(db: SQLiteDatabase, u: Long): List<RoadOutEdge> {
+        roadEdgesCache.get(u)?.let { return it }
+        val list = ArrayList<RoadOutEdge>()
+        db.rawQuery(
+            """
+            SELECT e.to_node, e.length_m, e.speed_kmh, e.road_name, e.road_type, e.osm_way_id, n.lat, n.lon
+            FROM edges e
+            JOIN nodes n ON e.to_node = n.id
+            WHERE e.from_node = ?
+            """.trimIndent(),
+            arrayOf(u.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                list.add(
+                    RoadOutEdge(
+                        v = cursor.getLong(0),
+                        lenM = cursor.getDouble(1),
+                        speed = cursor.getDouble(2).coerceAtLeast(5.0),
+                        rName = cursor.getString(3) ?: "",
+                        rType = cursor.getString(4) ?: "residential",
+                        outWay = cursor.getLong(5),
+                        vLat = cursor.getDouble(6),
+                        vLon = cursor.getDouble(7),
+                    )
+                )
+            }
+        }
+        roadEdgesCache.put(u, list)
+        return list
+    }
+
     private fun loadRestrictions(db: SQLiteDatabase): Map<Pair<Long, Long>, List<Pair<String, Long>>> {
         cachedRestrictions?.let { return it }
         val map = HashMap<Pair<Long, Long>, ArrayList<Pair<String, Long>>>()
@@ -1308,7 +1352,7 @@ internal object OfflineNavigationEngine {
 
             var reachedState: Pair<Long, Long>? = null
             var expanded = 0
-            val maxExpansions = 250000
+            val maxExpansions = 25000
 
             while (pq.isNotEmpty() && expanded < maxExpansions) {
                 val current = pq.poll() ?: break
@@ -1330,41 +1374,7 @@ internal object OfflineNavigationEngine {
 
                 val (uLat, uLon) = getNodeCoord(u)
 
-                data class OutEdge(
-                    val v: Long,
-                    val lenM: Double,
-                    val speed: Double,
-                    val rName: String,
-                    val rType: String,
-                    val outWay: Long,
-                    val vLat: Double,
-                    val vLon: Double,
-                )
-                val outEdges = ArrayList<OutEdge>()
-                db.rawQuery(
-                    """
-                    SELECT e.to_node, e.length_m, e.speed_kmh, e.road_name, e.road_type, e.osm_way_id, n.lat, n.lon
-                    FROM edges e
-                    JOIN nodes n ON e.to_node = n.id
-                    WHERE e.from_node = ?
-                    """.trimIndent(),
-                    arrayOf(u.toString())
-                ).use { cursor ->
-                    while (cursor.moveToNext()) {
-                        outEdges.add(
-                            OutEdge(
-                                v = cursor.getLong(0),
-                                lenM = cursor.getDouble(1),
-                                speed = cursor.getDouble(2).coerceAtLeast(5.0),
-                                rName = cursor.getString(3) ?: "",
-                                rType = cursor.getString(4) ?: "residential",
-                                outWay = cursor.getLong(5),
-                                vLat = cursor.getDouble(6),
-                                vLon = cursor.getDouble(7),
-                            )
-                        )
-                    }
-                }
+                val outEdges = getOutEdgesForNode(db, u)
 
                 for (edge in outEdges) {
                     val v = edge.v
