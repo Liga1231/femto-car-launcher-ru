@@ -75,11 +75,16 @@ internal class NavigationManager(
                 }
 
                 val isOnline = NetworkMonitor.isOnline()
-                val canUseOffline = OfflineNavigationEngine.isOfflineRoutingAvailable() &&
+                val isValhalla = ValhallaNavigationEngine.isAvailable(destinationGeocoder.context)
+                val canUseOffline = (isValhalla || OfflineNavigationEngine.isOfflineRoutingAvailable()) &&
                     OfflineNavigationEngine.isInBashkortostan(startLoc.latitude, startLoc.longitude) &&
                     OfflineNavigationEngine.isInBashkortostan(destPoint.latitude, destPoint.longitude)
 
-                Log.d(TAG, "calculateRoutes: isOnline=$isOnline, canUseOffline=$canUseOffline")
+                Log.i(
+                    TAG,
+                    "calculateRoutes: isOnline=$isOnline, isValhalla=$isValhalla, canUseOffline=$canUseOffline " +
+                        "start=(${startLoc.latitude}, ${startLoc.longitude}) dest=(${destPoint.latitude}, ${destPoint.longitude}) label='$destLabel'"
+                )
 
                 val effectiveRoutes = if (isOnline) {
                     // 1. ONLINE FIRST: fast server routing (150-300ms) with multiple route choices
@@ -96,6 +101,17 @@ internal class NavigationManager(
                     if (onlineRoutes.isNotEmpty()) {
                         Log.d(TAG, "Successfully obtained ${onlineRoutes.size} online routes from server")
                         onlineRoutes
+                    } else if (isValhalla) {
+                        Log.i(TAG, "Online routes unavailable, falling back to native C++ Valhalla engine")
+                        ValhallaNavigationEngine.calculateRoutes(
+                            context = destinationGeocoder.context,
+                            startLat = startLoc.latitude,
+                            startLon = startLoc.longitude,
+                            destLat = destPoint.latitude,
+                            destLon = destPoint.longitude,
+                            destinationLabel = destLabel,
+                            numRoutes = 2,
+                        )
                     } else if (canUseOffline) {
                         Log.d(TAG, "Online routes unavailable/empty, falling back to offline database")
                         OfflineNavigationEngine.calculateRoutesFromDatabase(
@@ -109,8 +125,26 @@ internal class NavigationManager(
                     } else {
                         emptyList()
                     }
+                } else if (isValhalla) {
+                    // 2. HIGH PERFORMANCE C++ VALHALLA ENGINE
+                    Log.i(TAG, "Offline mode: calculating route via native C++ Valhalla engine")
+                    val vRoutes = ValhallaNavigationEngine.calculateRoutes(
+                        context = destinationGeocoder.context,
+                        startLat = startLoc.latitude,
+                        startLon = startLoc.longitude,
+                        destLat = destPoint.latitude,
+                        destLon = destPoint.longitude,
+                        destinationLabel = destLabel,
+                        numRoutes = 2,
+                    )
+                    if (vRoutes.isNotEmpty()) {
+                        vRoutes
+                    } else {
+                        Log.w(TAG, "Valhalla engine returned empty routes for ($destLabel), skipping slow SQLite")
+                        emptyList()
+                    }
                 } else if (canUseOffline) {
-                    // 2. OFFLINE FALLBACK: calculate route locally
+                    // 3. OFFLINE FALLBACK: calculate route locally via SQLite
                     Log.d(TAG, "Offline mode: calculating route via local SQLite engine")
                     OfflineNavigationEngine.calculateRoutesFromDatabase(
                         startLat = startLoc.latitude,
@@ -297,7 +331,8 @@ internal class NavigationManager(
         currentRouteJob = scope.launch(Dispatchers.Default) {
             try {
                 val isOnline = NetworkMonitor.isOnline()
-                val canUseOffline = OfflineNavigationEngine.isOfflineRoutingAvailable() &&
+                val isValhalla = ValhallaNavigationEngine.isAvailable(destinationGeocoder.context)
+                val canUseOffline = (isValhalla || OfflineNavigationEngine.isOfflineRoutingAvailable()) &&
                     OfflineNavigationEngine.isInBashkortostan(currentLocation.latitude, currentLocation.longitude) &&
                     OfflineNavigationEngine.isInBashkortostan(route.destination.latitude, route.destination.longitude)
 
@@ -311,7 +346,35 @@ internal class NavigationManager(
                             destinationLabel = route.destinationLabel,
                         )
                     }.getOrNull()
-                    online ?: if (canUseOffline) {
+                    online ?: if (isValhalla) {
+                        ValhallaNavigationEngine.calculateRoutes(
+                            context = destinationGeocoder.context,
+                            startLat = currentLocation.latitude,
+                            startLon = currentLocation.longitude,
+                            destLat = route.destination.latitude,
+                            destLon = route.destination.longitude,
+                            destinationLabel = route.destinationLabel,
+                            numRoutes = 1,
+                        ).firstOrNull()
+                    } else if (canUseOffline) {
+                        OfflineNavigationEngine.calculateRouteFromDatabase(
+                            startLat = currentLocation.latitude,
+                            startLon = currentLocation.longitude,
+                            destLat = route.destination.latitude,
+                            destLon = route.destination.longitude,
+                            destinationLabel = route.destinationLabel,
+                        )
+                    } else null
+                } else if (isValhalla) {
+                    ValhallaNavigationEngine.calculateRoutes(
+                        context = destinationGeocoder.context,
+                        startLat = currentLocation.latitude,
+                        startLon = currentLocation.longitude,
+                        destLat = route.destination.latitude,
+                        destLon = route.destination.longitude,
+                        destinationLabel = route.destinationLabel,
+                        numRoutes = 1,
+                    ).firstOrNull() ?: if (canUseOffline) {
                         OfflineNavigationEngine.calculateRouteFromDatabase(
                             startLat = currentLocation.latitude,
                             startLon = currentLocation.longitude,

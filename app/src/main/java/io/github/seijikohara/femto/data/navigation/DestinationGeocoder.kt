@@ -27,7 +27,7 @@ internal data class AddressSuggestion(
 )
 
 internal class DestinationGeocoder(
-    private val context: Context,
+    val context: Context,
     private val client: OkHttpClient,
     private val userAgent: String,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
