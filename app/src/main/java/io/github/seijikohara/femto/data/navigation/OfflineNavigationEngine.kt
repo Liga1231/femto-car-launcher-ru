@@ -469,10 +469,27 @@ internal object OfflineNavigationEngine {
         val rawTokens = cleanQuery.split(Regex("""\s+""")).filter { it.isNotBlank() }
         if (rawTokens.isEmpty()) return emptyList()
 
-        val lastToken = rawTokens.last()
+        // Expand common Russian street abbreviations (e.g. "пр о. 24" -> "проспект октября 24")
+        val expandedTokens = mutableListOf<String>()
+        var tokIdx = 0
+        while (tokIdx < rawTokens.size) {
+            val tok = rawTokens[tokIdx].lowercase(Locale.ROOT)
+            when {
+                tok == "пр" || tok == "просп" -> expandedTokens.add("проспект")
+                tok == "ул" -> expandedTokens.add("улица")
+                tok == "б-р" || tok == "бул" -> expandedTokens.add("бульвар")
+                tok == "пер" -> expandedTokens.add("переулок")
+                (tok == "о" || tok == "окт") && tokIdx > 0 && expandedTokens.last() in setOf("проспект", "пр", "просп") -> expandedTokens.add("октября")
+                tok == "с" && tokIdx + 1 < rawTokens.size && rawTokens[tokIdx + 1].lowercase(Locale.ROOT).startsWith("юлаев") -> expandedTokens.add("салавата")
+                else -> expandedTokens.add(tok)
+            }
+            tokIdx++
+        }
+
+        val lastToken = expandedTokens.last()
         val hasDigits = lastToken.any { it.isDigit() }
         val houseNum = if (hasDigits) normalizeHouseNumber(lastToken) else null
-        val streetTokens = if (houseNum != null) rawTokens.dropLast(1) else rawTokens
+        val streetTokens = if (houseNum != null) expandedTokens.dropLast(1) else expandedTokens
 
         val qLower = cleanQuery.lowercase(Locale.ROOT)
         val qRoot = qLower
@@ -492,7 +509,7 @@ internal object OfflineNavigationEngine {
         if (db != null) {
             try {
                 // 0. High-performance FTS5 Search (address_fts, places_fts)
-                val cleanTokens = rawTokens
+                val cleanTokens = expandedTokens
                     .map { it.replace(Regex("""[^a-zA-Zа-яА-Я0-9ёЁ]"""), "") }
                     .filter { it.isNotBlank() }
 
@@ -540,19 +557,93 @@ internal object OfflineNavigationEngine {
                             }
                         }
                     } else {
+                        // 1. Street search FIRST when user didn't enter a house number!
+                        val stClean = cleanTokens.filter { t ->
+                            val lower = t.lowercase(Locale.ROOT)
+                            lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "проезд", "шоссе", "ш", "г", "город")
+                        }.ifEmpty { cleanTokens }
+
+                        if (stClean.isNotEmpty()) {
+                            val stConds = stClean.map { "s.aliases LIKE ?" }
+                            val stParams = stClean.map { "%${it.lowercase(Locale.ROOT)}%" }.toMutableList()
+
+                            val stSql = """
+                                SELECT s.name, s.city, s.lat, s.lon
+                                FROM streets s
+                                WHERE ${stConds.joinToString(" AND ")}
+                                LIMIT 40
+                            """.trimIndent()
+
+                            val matchedStreets = mutableListOf<ScoredCandidate>()
+                            db.rawQuery(stSql, stParams.toTypedArray()).use { cursor ->
+                                while (cursor.moveToNext()) {
+                                    val name = cursor.getString(0)
+                                    val city = cursor.getString(1) ?: "Уфа"
+                                    val lat = cursor.getDouble(2)
+                                    val lon = cursor.getDouble(3)
+
+                                    val nl = name.lowercase(Locale.ROOT)
+                                    val ql = cleanQuery.lowercase(Locale.ROOT)
+                                    val isUfa = city.isBlank() || city.equals("Уфа", ignoreCase = true)
+                                    var score = 100
+                                    if (nl == ql) score += 300
+                                    else if (nl.startsWith(ql)) score += 150
+                                    else if (nl.contains(ql)) score += 80
+
+                                    if (isUfa) score += 50
+                                    if (nl.contains("салавата юлаева") && nl.contains("проспект")) score += 40
+
+                                    val displaySub = if (nl.contains("салавата юлаева")) {
+                                        if (city.isBlank()) "Главная магистраль, Уфа" else "Магистраль, $city"
+                                    } else {
+                                        if (city.isBlank()) "Улица, Уфа" else "Улица, $city"
+                                    }
+
+                                    matchedStreets.add(
+                                        ScoredCandidate(
+                                            title = name,
+                                            subtitle = displaySub,
+                                            lat = lat,
+                                            lon = lon,
+                                            priority = score,
+                                            isUfa = isUfa,
+                                            startsWithQuery = nl.startsWith(ql),
+                                            containsQuery = nl.contains(ql),
+                                        )
+                                    )
+                                }
+                            }
+                            matchedStreets.sortByDescending { it.priority }
+                            val seenStreets = HashSet<String>()
+                            for (st in matchedStreets) {
+                                val key = "${st.title}_${st.subtitle}"
+                                if (seenStreets.add(key)) {
+                                    candidates.add(st)
+                                    if (candidates.size >= 8) break
+                                }
+                            }
+                        }
+
+                        // 2. Search places by TITLE ONLY (so shops do not appear when querying a street)
+                        val placeClean = cleanTokens.filter { t ->
+                            val lower = t.lowercase(Locale.ROOT)
+                            lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "шоссе")
+                        }.ifEmpty { cleanTokens }
+                        val titleFts = placeClean.joinToString(" AND ") { "$it*" }
+
                         runCatching {
                             val placesSql = """
                                 SELECT p.title, p.subtitle, p.lat, p.lon, p.category, p.priority
                                 FROM places_fts f
                                 JOIN places p ON f.rowid = p.id
-                                WHERE places_fts MATCH ?
+                                WHERE f.title MATCH ?
                                 ORDER BY
                                     CASE WHEN p.subtitle LIKE '%Уфа%' OR p.subtitle = 'Уфа' THEN 0 ELSE 1 END ASC,
                                     p.priority DESC
-                                LIMIT ?
+                                LIMIT ${(maxResults - candidates.size).coerceAtLeast(1)}
                             """.trimIndent()
 
-                            db.rawQuery(placesSql, arrayOf(ftsQuery, maxResults.toString())).use { cursor ->
+                            db.rawQuery(placesSql, arrayOf(titleFts)).use { cursor ->
                                 while (cursor.moveToNext()) {
                                     val title = cursor.getString(0)
                                     val sub = cursor.getString(1) ?: "Уфа"
@@ -568,8 +659,8 @@ internal object OfflineNavigationEngine {
                                             lon = lon,
                                             priority = prio,
                                             isUfa = sub.contains("Уфа", ignoreCase = true),
-                                            startsWithQuery = true,
-                                            containsQuery = true,
+                                            startsWithQuery = title.lowercase(Locale.ROOT).startsWith(qLower),
+                                            containsQuery = title.lowercase(Locale.ROOT).contains(qLower),
                                         )
                                     )
                                 }
@@ -671,13 +762,8 @@ internal object OfflineNavigationEngine {
                         lower !in setOf("трк", "трц", "тц", "тк", "магазин", "клиника", "больница", "улица", "ул", "проспект", "пр")
                     }.ifEmpty { rawTokens }
 
-                    val poiConds = poiClean.map { "(p.search_norm LIKE ? OR p.name LIKE ?)" }
-                    val poiParams = mutableListOf<String>()
-                    for (t in poiClean) {
-                        val pattern = "%${t.lowercase(Locale.ROOT)}%"
-                        poiParams.add(pattern)
-                        poiParams.add(pattern)
-                    }
+                    val poiConds = poiClean.map { "p.name LIKE ?" }
+                    val poiParams = poiClean.map { "%${it.lowercase(Locale.ROOT)}%" }.toMutableList()
 
                     val poiSql = """
                         SELECT p.name, p.subtitle, p.lat, p.lon
@@ -1396,6 +1482,10 @@ internal object OfflineNavigationEngine {
 
                         // 1. Road hierarchy preference & service penalty
                         var pFactor = ROAD_PRIORITY_WEIGHT[rType] ?: 1.2
+                        // Major arterial expressway bonus (Prospekt Salavata Yulaeva is Ufa's main high-speed arterial)
+                        if (rName.contains("Салавата Юлаева", ignoreCase = true)) {
+                            pFactor *= 0.65
+                        }
                         if (penalizedEdges != null && penalizedEdges.contains(Pair(u, v))) {
                             pFactor *= penaltyFactor
                         }
