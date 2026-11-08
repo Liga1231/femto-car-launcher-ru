@@ -383,7 +383,8 @@ internal object OfflineNavigationEngine {
         ) {
             return true
         }
-        if (lat in 54.48..54.95 && lon in 55.70..56.35) return true
+        if (lat in 54.75..54.92 && lon in 55.80..56.26) return true
+        if (lat in 54.54..54.75 && lon in 55.78..56.12) return true
         return false
     }
 
@@ -525,6 +526,8 @@ internal object OfflineNavigationEngine {
         val effLat = userLat ?: lastKnownUserLat
         val effLon = userLon ?: lastKnownUserLon
         val hasLocation = (effLat != null && effLon != null && !effLat.isNaN() && !effLon.isNaN() && effLat != 0.0 && effLon != 0.0)
+        val refLat = if (hasLocation && effLat != null) effLat else 54.7350
+        val refLon = if (hasLocation && effLon != null) effLon else 55.9580
 
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
@@ -589,37 +592,56 @@ internal object OfflineNavigationEngine {
                     if (houseNum != null) {
                         runCatching {
                             val ftsSql = """
-                                SELECT a.street_name, a.housenumber, a.city, a.lat, a.lon
+                                SELECT a.street_name, a.housenumber, a.city, a.lat, a.lon,
+                                       ((a.lat - ?) * (a.lat - ?) + (a.lon - ?) * (a.lon - ?) * 0.333) as dist_sq
                                 FROM address_fts f
                                 JOIN address_search a ON f.rowid = a.house_id
                                 WHERE address_fts MATCH ?
                                 ORDER BY
-                                    CASE WHEN a.city = 'Уфа' OR a.city IS NULL OR a.city = '' THEN 0 ELSE 1 END ASC,
+                                    CASE WHEN a.city = 'Уфа' THEN 0
+                                         WHEN a.city IS NOT NULL AND a.city != '' THEN 2
+                                         ELSE 1 END ASC,
                                     CASE WHEN upper(a.housenumber) = upper(?) THEN 0
                                          WHEN upper(a.housenumber) LIKE upper(?) || '/%' THEN 1
-                                         ELSE 2 END ASC,
+                                         WHEN upper(a.housenumber) LIKE upper(?) || '%' THEN 2
+                                         ELSE 3 END ASC,
+                                    dist_sq ASC,
                                     LENGTH(a.housenumber) ASC
                                 LIMIT ?
                             """.trimIndent()
 
-                            db.rawQuery(ftsSql, arrayOf(ftsQuery, houseNum, houseNum, maxResults.toString())).use { cursor ->
+                            db.rawQuery(
+                                ftsSql,
+                                arrayOf(
+                                    refLat.toString(),
+                                    refLat.toString(),
+                                    refLon.toString(),
+                                    refLon.toString(),
+                                    ftsQuery,
+                                    houseNum,
+                                    houseNum,
+                                    maxResults.toString()
+                                )
+                            ).use { cursor ->
                                 while (cursor.moveToNext()) {
                                     val stName = cursor.getString(0)
                                     val hn = cursor.getString(1)
-                                    val city = cursor.getString(2) ?: "Уфа"
+                                    val city = cursor.getString(2) ?: ""
                                     val lat = cursor.getDouble(3)
                                     val lon = cursor.getDouble(4)
                                     val isExact = hn.equals(houseNum, ignoreCase = true)
-                                    val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
+                                    val dist = calculateDistanceMeters(refLat, refLon, lat, lon)
+                                    val isUfa = city.equals("Уфа", ignoreCase = true) || isUfaLocation(stName, city, lat, lon)
+                                    val displayCity = if (isUfa) "Уфа" else if (city.isNotBlank()) city else "Башкортостан"
 
                                     candidates.add(
                                         ScoredCandidate(
                                             title = "$stName, $hn",
-                                            subtitle = if (city.isBlank()) "Уфа" else city,
+                                            subtitle = displayCity,
                                             lat = lat,
                                             lon = lon,
                                             priority = if (isExact) 1000 else 900,
-                                            isUfa = city.isBlank() || city.equals("Уфа", ignoreCase = true),
+                                            isUfa = isUfa,
                                             startsWithQuery = true,
                                             containsQuery = true,
                                             distanceMeters = dist,
@@ -635,47 +657,103 @@ internal object OfflineNavigationEngine {
                         // 1. Street search FIRST when user didn't enter a house number!
                         val stClean = cleanTokens.filter { t ->
                             val lower = t.lowercase(Locale.ROOT)
-                            lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "проезд", "шоссе", "ш", "г", "город", "кб")
+                            lower !in setOf("улица", "ул", "проспект", "просп", "пр", "бульвар", "б-р", "переулок", "пер", "проезд", "шоссе", "ш", "г", "город", "кб")
                         }.ifEmpty { cleanTokens }
 
                         if (stClean.isNotEmpty() && !qLower.startsWith("кб")) {
-                            val stConds = stClean.map { "s.aliases LIKE ?" }
-                            val stParams = stClean.map { "%${it.lowercase(Locale.ROOT)}%" }.toMutableList()
+                            val stConds = mutableListOf<String>()
+                            val stParams = mutableListOf<String>()
+                            for (t in stClean) {
+                                val tE = t.lowercase(Locale.ROOT).replace('ё', 'е')
+                                val tYo = t.lowercase(Locale.ROOT).replace('е', 'ё')
+                                if (tE != tYo) {
+                                    stConds.add("(s.aliases LIKE ? OR s.aliases LIKE ?)")
+                                    stParams.add("%$tE%")
+                                    stParams.add("%$tYo%")
+                                } else {
+                                    stConds.add("s.aliases LIKE ?")
+                                    stParams.add("%${t.lowercase(Locale.ROOT)}%")
+                                }
+                            }
 
                             val stSql = """
-                                SELECT s.name, s.city, s.lat, s.lon
+                                SELECT s.name, s.city, s.lat, s.lon,
+                                       ((s.lat - ?) * (s.lat - ?) + (s.lon - ?) * (s.lon - ?) * 0.333) as dist_sq
                                 FROM streets s
                                 WHERE ${stConds.joinToString(" AND ")}
+                                ORDER BY
+                                    CASE WHEN s.city = 'Уфа' THEN 0
+                                         WHEN s.city IS NOT NULL AND s.city != '' THEN 2
+                                         ELSE 1 END ASC,
+                                    dist_sq ASC
                                 LIMIT 40
                             """.trimIndent()
 
+                            val typeRegex = Regex("""(?i)\b(улица|ул|проспект|просп|пр|бульвар|б-р|переулок|пер|проезд|шоссе|ш)\.?\b""")
+                            val coreQuery = cleanQuery.replace(typeRegex, "").trim().lowercase(Locale.ROOT)
+
+                            val queryArgs = mutableListOf(refLat.toString(), refLat.toString(), refLon.toString(), refLon.toString())
+                            queryArgs.addAll(stParams)
+
+                            val userWantsProspekt = rawTokens.any { it in setOf("проспект", "просп", "пр") }
+                            val userWantsStreet = rawTokens.any { it in setOf("улица", "ул") }
+                            val userWantsLane = rawTokens.any { it in setOf("переулок", "пер") }
+                            val userWantsBoulevard = rawTokens.any { it in setOf("бульвар", "б-р") }
+
                             val matchedStreets = mutableListOf<ScoredCandidate>()
-                            db.rawQuery(stSql, stParams.toTypedArray()).use { cursor ->
+                            db.rawQuery(stSql, queryArgs.toTypedArray()).use { cursor ->
                                 while (cursor.moveToNext()) {
                                     val name = cursor.getString(0)
-                                    val city = cursor.getString(1) ?: "Уфа"
+                                    val city = cursor.getString(1) ?: ""
                                     val lat = cursor.getDouble(2)
                                     val lon = cursor.getDouble(3)
 
                                     val nl = name.lowercase(Locale.ROOT)
                                     val ql = cleanQuery.lowercase(Locale.ROOT)
-                                    val isUfa = city.isBlank() || city.equals("Уфа", ignoreCase = true)
+                                    val coreName = nl.replace(typeRegex, "").trim()
+
+                                    val isUfa = city.equals("Уфа", ignoreCase = true) || isUfaLocation(name, city, lat, lon)
+
                                     var score = 100
-                                    val isExactSt = (nl == ql || nl.startsWith(ql) || (ql.length >= 4 && nl.contains(ql)))
-                                    if (nl == ql) score += 300
-                                    else if (nl.startsWith(ql)) score += 150
-                                    else if (nl.contains(ql)) score += 80
+                                    val isExactSt = (nl == ql || coreName == coreQuery || (coreQuery.isNotEmpty() && coreName == ql))
+                                    val parts = coreName.split(Regex("""\s+""")).filter { it.isNotBlank() }
+                                    val isSurnameExact = (!isExactSt && coreQuery.isNotEmpty() && parts.size > 1 && parts.last() == coreQuery)
 
-                                    if (isUfa) score += 50
-                                    if (nl.contains("салавата юлаева") && nl.contains("проспект")) score += 40
-
-                                    val displaySub = if (nl.contains("салавата юлаева")) {
-                                        if (city.isBlank()) "Главная магистраль, Уфа" else "Магистраль, $city"
-                                    } else {
-                                        if (city.isBlank()) "Улица, Уфа" else "Улица, $city"
+                                    if (isExactSt) {
+                                        score += 300
+                                    } else if (isSurnameExact) {
+                                        score += 290
+                                    } else if (nl.startsWith(ql) || (coreQuery.isNotEmpty() && coreName.startsWith(coreQuery))) {
+                                        score += 150
+                                    } else if ((coreQuery.isNotEmpty() && coreName.contains(coreQuery)) || nl.contains(ql)) {
+                                        score += 80
                                     }
 
-                                    val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
+                                    if (userWantsProspekt && nl.contains("проспект")) score += 60
+                                    if (userWantsStreet && nl.contains("улица")) score += 20
+                                    if (userWantsLane && nl.contains("переулок")) score += 60
+                                    if (userWantsBoulevard && nl.contains("бульвар")) score += 60
+
+                                    if (city.equals("Уфа", ignoreCase = true)) {
+                                        score += 100
+                                    } else if (isUfa) {
+                                        score += 80
+                                    } else if (city.isBlank() || city == "Башкортостан") {
+                                        score += 10
+                                    } else {
+                                        score += 20
+                                    }
+
+                                    if (nl.contains("салавата юлаева") && nl.contains("проспект")) score += 40
+
+                                    val dist = calculateDistanceMeters(refLat, refLon, lat, lon)
+                                    score -= ((dist / 1000.0) * 5.0).roundToInt()
+
+                                    val displaySub = if (nl.contains("салавата юлаева")) {
+                                        if (isUfa) "Главная магистраль, Уфа" else "Магистраль, $city"
+                                    } else {
+                                        if (isUfa) "Улица, Уфа" else if (city.isNotBlank()) "Улица, $city" else "Улица, Башкортостан"
+                                    }
 
                                     matchedStreets.add(
                                         ScoredCandidate(
@@ -685,8 +763,8 @@ internal object OfflineNavigationEngine {
                                             lon = lon,
                                             priority = score,
                                             isUfa = isUfa,
-                                            startsWithQuery = nl.startsWith(ql),
-                                            containsQuery = nl.contains(ql),
+                                            startsWithQuery = nl.startsWith(ql) || (coreQuery.isNotEmpty() && coreName.startsWith(coreQuery)),
+                                            containsQuery = nl.contains(ql) || (coreQuery.isNotEmpty() && coreName.contains(coreQuery)),
                                             distanceMeters = dist,
                                             isExactAddress = false,
                                             isExactStreet = isExactSt,
@@ -695,7 +773,7 @@ internal object OfflineNavigationEngine {
                                     )
                                 }
                             }
-                            matchedStreets.sortByDescending { it.priority }
+                            matchedStreets.sortWith(compareByDescending<ScoredCandidate> { it.priority }.thenBy { it.distanceMeters })
                             val seenStreets = HashSet<String>()
                             for (st in matchedStreets) {
                                 val key = "${st.title}_${st.subtitle}"
@@ -813,7 +891,9 @@ internal object OfflineNavigationEngine {
                         FROM streets s
                         WHERE ${stConds.joinToString(" AND ")}
                         ORDER BY
-                            CASE WHEN s.city = 'Уфа' OR s.city IS NULL OR s.city = '' THEN 0 ELSE 1 END,
+                            CASE WHEN s.city = 'Уфа' THEN 0
+                                 WHEN s.city IS NOT NULL AND s.city != '' THEN 2
+                                 ELSE 1 END ASC,
                             CASE WHEN lower(s.name) LIKE ? THEN 0 ELSE 1 END,
                             LENGTH(s.name) ASC
                         LIMIT 10
@@ -864,13 +944,14 @@ internal object OfflineNavigationEngine {
                                 val lon = hCursor.getDouble(2)
                                 val rank = hCursor.getInt(3)
                                 val isExact = (rank == 0)
-                                val isUfa = street.city.isBlank() || street.city.equals("Уфа", ignoreCase = true)
-                                val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
+                                val isUfa = street.city.equals("Уфа", ignoreCase = true) || isUfaLocation(street.name, street.city, lat, lon)
+                                val displayCity = if (isUfa) "Уфа" else if (street.city.isNotBlank()) street.city else "Башкортостан"
+                                val dist = calculateDistanceMeters(refLat, refLon, lat, lon)
 
                                 candidates.add(
                                     ScoredCandidate(
                                         title = "${street.name}, $hn",
-                                        subtitle = if (street.city.isBlank()) "Уфа" else street.city,
+                                        subtitle = displayCity,
                                         lat = lat,
                                         lon = lon,
                                         priority = if (isExact) 1000 else (900 - rank * 5),
@@ -965,30 +1046,39 @@ internal object OfflineNavigationEngine {
                         val stParams = stClean.map { "%${it.lowercase(Locale.ROOT)}%" }.toMutableList()
 
                         val stSql = """
-                            SELECT s.name, s.city, s.lat, s.lon
+                            SELECT s.name, s.city, s.lat, s.lon,
+                                   ((s.lat - ?) * (s.lat - ?) + (s.lon - ?) * (s.lon - ?) * 0.333) as dist_sq
                             FROM streets s
                             WHERE ${stConds.joinToString(" AND ")}
                             ORDER BY
-                                CASE WHEN s.city = 'Уфа' OR s.city IS NULL OR s.city = '' THEN 0 ELSE 1 END,
+                                CASE WHEN s.city = 'Уфа' THEN 0
+                                     WHEN s.city IS NOT NULL AND s.city != '' THEN 2
+                                     ELSE 1 END ASC,
+                                dist_sq ASC,
                                 LENGTH(s.name) ASC
                             LIMIT ${(maxResults - candidates.size).coerceAtLeast(1)}
                         """.trimIndent()
 
-                        db.rawQuery(stSql, stParams.toTypedArray()).use { cursor ->
+                        val queryArgs = mutableListOf(refLat.toString(), refLat.toString(), refLon.toString(), refLon.toString())
+                        queryArgs.addAll(stParams)
+
+                        db.rawQuery(stSql, queryArgs.toTypedArray()).use { cursor ->
                             while (cursor.moveToNext()) {
                                 val name = cursor.getString(0)
-                                val city = cursor.getString(1) ?: "Уфа"
+                                val city = cursor.getString(1) ?: ""
                                 val lat = cursor.getDouble(2)
                                 val lon = cursor.getDouble(3)
-                                val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
+                                val dist = calculateDistanceMeters(refLat, refLon, lat, lon)
+                                val isUfa = city.equals("Уфа", ignoreCase = true) || isUfaLocation(name, city, lat, lon)
+                                val displaySub = if (isUfa) "Улица, Уфа" else if (city.isNotBlank()) "Улица, $city" else "Улица, Башкортостан"
                                 candidates.add(
                                     ScoredCandidate(
                                         title = name,
-                                        subtitle = city,
+                                        subtitle = displaySub,
                                         lat = lat,
                                         lon = lon,
                                         priority = 80,
-                                        isUfa = city.isBlank() || city.equals("Уфа", ignoreCase = true),
+                                        isUfa = isUfa,
                                         startsWithQuery = true,
                                         containsQuery = true,
                                         distanceMeters = dist,
@@ -1060,19 +1150,20 @@ internal object OfflineNavigationEngine {
                     if (b.isPoiOrStore && b.distanceMeters < 5_000.0) return@sortedWith 1
                 }
 
-                // 5. General fallback: distance first, then priority
-                val distCmp = a.distanceMeters.compareTo(b.distanceMeters)
-                if (distCmp != 0 && a.distanceMeters < 50_000.0 && b.distanceMeters < 50_000.0) {
-                    return@sortedWith distCmp
-                }
-                b.priority.compareTo(a.priority)
+                // 5. Score comparison (incorporates relevance, street bonus, Ufa bonus, distance decay)
+                val prioCmp = b.priority.compareTo(a.priority)
+                if (prioCmp != 0) return@sortedWith prioCmp
+
+                // 6. Closest distance wins ties
+                a.distanceMeters.compareTo(b.distanceMeters)
             }
         } else {
             candidates.sortedWith(
-                compareByDescending<ScoredCandidate> { it.isUfa }
+                compareByDescending<ScoredCandidate> { it.isExactAddress }
+                    .thenByDescending { it.isExactStreet }
+                    .thenByDescending { it.isUfa }
                     .thenByDescending { it.priority }
-                    .thenByDescending { it.startsWithQuery }
-                    .thenByDescending { it.containsQuery }
+                    .thenBy { it.distanceMeters }
             )
         }
 
