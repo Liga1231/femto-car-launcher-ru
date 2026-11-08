@@ -218,26 +218,14 @@ internal object OfflineNavigationEngine {
         val ctx = appContext
         val candidates = mutableListOf(
             File("/sdcard/Femto/maps/geocoding.db"),
-            File("/sdcard/Femto/maps/search.db"),
             File(Environment.getExternalStorageDirectory(), "Femto/maps/geocoding.db"),
-            File(Environment.getExternalStorageDirectory(), "Femto/maps/search.db"),
             File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/geocoding.db"),
-            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/search.db"),
         )
         if (ctx != null) {
             ctx.getExternalFilesDir("maps")?.let {
                 candidates.add(File(it, "geocoding.db"))
-                candidates.add(File(it, "search.db"))
             }
-            val internalFile = File(ctx.filesDir, "search.db")
-            if (!internalFile.exists() || internalFile.length() == 0L) {
-                try {
-                    ctx.assets.open("map/search.db").use { input ->
-                        internalFile.outputStream().use { output -> input.copyTo(output) }
-                    }
-                } catch (_: Exception) {}
-            }
-            candidates.add(internalFile)
+            candidates.add(File(ctx.filesDir, "geocoding.db"))
         }
         for (f in candidates) {
             if (f.exists() && f.canRead() && f.length() > 0) {
