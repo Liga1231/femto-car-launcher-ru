@@ -987,7 +987,10 @@ internal class LiveMapWebViewClient(
     private val onPageLoaded: () -> Unit,
     private val onRendererDeath: (view: WebView, crashed: Boolean) -> Unit,
 ) : WebViewClientCompat() {
-    private val onlineTileCache = object : LruCache<String, ByteArray>(512) {}
+    // Byte-bounded LRU cache: 32MB max to prevent OutOfMemory on in-car head units
+    private val onlineTileCache = object : LruCache<String, ByteArray>(32 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: ByteArray): Int = value.size
+    }
     @Volatile
     private var onlineTileUrlTemplate: String = "https://tiles.openfreemap.org/planet/20261101_080013_pt/{z}/{x}/{y}.pbf"
 

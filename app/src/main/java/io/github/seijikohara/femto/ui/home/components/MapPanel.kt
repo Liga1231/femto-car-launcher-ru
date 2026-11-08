@@ -99,7 +99,9 @@ internal fun MapPanel(
             elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
         }
     }
-    val effectiveLocation = if (hasPermission) (location ?: fallbackLocation) else location
+    // Always provide an effective location (GPS location if available and granted, or center of Ufa)
+    // so the offline map and navigation can be viewed and explored even without location permissions or in airplane mode.
+    val effectiveLocation = if (hasPermission && location != null) location else fallbackLocation
 
     Surface(
         modifier = modifier,

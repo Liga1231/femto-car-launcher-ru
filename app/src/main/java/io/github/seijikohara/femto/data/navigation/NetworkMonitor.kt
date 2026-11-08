@@ -122,5 +122,7 @@ internal class NetworkMonitor private constructor(context: Context) {
             instance ?: synchronized(this) {
                 instance ?: NetworkMonitor(context).also { instance = it }
             }
+
+        fun isOnline(): Boolean = instance?.checkCurrentOnline() ?: true
     }
 }

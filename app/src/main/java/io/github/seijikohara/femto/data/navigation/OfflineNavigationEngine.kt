@@ -491,7 +491,94 @@ internal object OfflineNavigationEngine {
         val db = getSearchDatabase()
         if (db != null) {
             try {
-                // 1. If house number is specified, search exact houses via streets + houses tables
+                // 0. High-performance FTS5 Search (address_fts, places_fts)
+                val cleanTokens = rawTokens
+                    .map { it.replace(Regex("""[^a-zA-Zа-яА-Я0-9ёЁ]"""), "") }
+                    .filter { it.isNotBlank() }
+
+                if (cleanTokens.isNotEmpty()) {
+                    val ftsQuery = cleanTokens.joinToString(" AND ") { "$it*" }
+
+                    if (houseNum != null) {
+                        runCatching {
+                            val ftsSql = """
+                                SELECT a.street_name, a.housenumber, a.city, a.lat, a.lon
+                                FROM address_fts f
+                                JOIN address_search a ON f.rowid = a.house_id
+                                WHERE address_fts MATCH ?
+                                ORDER BY
+                                    CASE WHEN a.city = 'Уфа' OR a.city IS NULL OR a.city = '' THEN 0 ELSE 1 END ASC,
+                                    CASE WHEN upper(a.housenumber) = upper(?) THEN 0
+                                         WHEN upper(a.housenumber) LIKE upper(?) || '/%' THEN 1
+                                         ELSE 2 END ASC,
+                                    LENGTH(a.housenumber) ASC
+                                LIMIT ?
+                            """.trimIndent()
+
+                            db.rawQuery(ftsSql, arrayOf(ftsQuery, houseNum, houseNum, maxResults.toString())).use { cursor ->
+                                while (cursor.moveToNext()) {
+                                    val stName = cursor.getString(0)
+                                    val hn = cursor.getString(1)
+                                    val city = cursor.getString(2) ?: "Уфа"
+                                    val lat = cursor.getDouble(3)
+                                    val lon = cursor.getDouble(4)
+                                    val isExact = hn.equals(houseNum, ignoreCase = true)
+
+                                    candidates.add(
+                                        ScoredCandidate(
+                                            title = "$stName, $hn",
+                                            subtitle = if (city.isBlank()) "Уфа" else city,
+                                            lat = lat,
+                                            lon = lon,
+                                            priority = if (isExact) 100 else 90,
+                                            isUfa = city.isBlank() || city.equals("Уфа", ignoreCase = true),
+                                            startsWithQuery = true,
+                                            containsQuery = true,
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        runCatching {
+                            val placesSql = """
+                                SELECT p.title, p.subtitle, p.lat, p.lon, p.category, p.priority
+                                FROM places_fts f
+                                JOIN places p ON f.rowid = p.id
+                                WHERE places_fts MATCH ?
+                                ORDER BY
+                                    CASE WHEN p.subtitle LIKE '%Уфа%' OR p.subtitle = 'Уфа' THEN 0 ELSE 1 END ASC,
+                                    p.priority DESC
+                                LIMIT ?
+                            """.trimIndent()
+
+                            db.rawQuery(placesSql, arrayOf(ftsQuery, maxResults.toString())).use { cursor ->
+                                while (cursor.moveToNext()) {
+                                    val title = cursor.getString(0)
+                                    val sub = cursor.getString(1) ?: "Уфа"
+                                    val lat = cursor.getDouble(2)
+                                    val lon = cursor.getDouble(3)
+                                    val prio = cursor.getInt(5)
+
+                                    candidates.add(
+                                        ScoredCandidate(
+                                            title = title,
+                                            subtitle = sub,
+                                            lat = lat,
+                                            lon = lon,
+                                            priority = prio,
+                                            isUfa = sub.contains("Уфа", ignoreCase = true),
+                                            startsWithQuery = true,
+                                            containsQuery = true,
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 1. If house number is specified, search exact houses via streets + houses tables (fallback/supplement)
                 if (houseNum != null && streetTokens.isNotEmpty()) {
                     val stClean = streetTokens.filter { t ->
                         val lower = t.lowercase(Locale.ROOT)
@@ -704,7 +791,8 @@ internal object OfflineNavigationEngine {
                     .thenByDescending { it.containsQuery }
             )
             .filter {
-                val key = "${it.title.lowercase(Locale.ROOT)}_${it.subtitle.lowercase(Locale.ROOT)}"
+                val cleanTitle = it.title.lowercase(Locale.ROOT).replace(Regex("""[,.\s]+"""), " ").trim()
+                val key = "${cleanTitle}_${String.format(Locale.ROOT, "%.4f", it.lat)}"
                 seen.add(key)
             }
             .take(maxResults)
@@ -735,204 +823,8 @@ internal object OfflineNavigationEngine {
         return suggestions.firstOrNull()?.point
     }
 
-    // -------------------------------------------------------------
-    // ROAD NETWORK GRAPH OF REPUBLIC OF BASHKORTOSTAN
-    // -------------------------------------------------------------
-
-    private val nodes = mutableMapOf<Int, GraphNode>()
-    private val adjacency = mutableMapOf<Int, MutableList<GraphEdge>>()
-
-    init {
-        buildBashkortostanGraph()
-    }
-
-    private fun addNode(id: Int, lat: Double, lon: Double, name: String) {
-        nodes[id] = GraphNode(id, lat, lon, name)
-        adjacency[id] = mutableListOf()
-    }
-
-    private fun addEdge(from: Int, to: Int, speed: Int, name: String, oneway: Boolean = false) {
-        val n1 = nodes[from] ?: return
-        val n2 = nodes[to] ?: return
-        val dist = calculateDistanceMeters(n1.lat, n1.lon, n2.lat, n2.lon)
-        adjacency[from]?.add(GraphEdge(from, to, dist, speed, name, oneway))
-        if (!oneway) {
-            adjacency[to]?.add(GraphEdge(to, from, dist, speed, name, false))
-        }
-    }
-
-    private fun buildBashkortostanGraph() {
-        // --- Hub nodes (Cities) ---
-        addNode(1, 54.7351, 55.9587, "Уфа (Центр)")
-        addNode(2, 54.7650, 56.0040, "Уфа (Проспект Октября)")
-        addNode(3, 54.8150, 56.0850, "Уфа (Черниковка)")
-        addNode(4, 54.7700, 56.0700, "Уфа (Сипайлово)")
-        addNode(5, 54.7200, 56.0100, "Уфа (Зелёная Роща)")
-        addNode(6, 54.7108, 55.9644, "Уфа (Монумент Дружбы)")
-        addNode(7, 54.6850, 55.8750, "Уфа (Дёма)")
-        addNode(8, 54.7750, 55.8800, "Уфа (Затон)")
-        addNode(9, 54.7700, 56.2400, "Уфа (Шакша)")
-        addNode(10, 54.5574, 55.8741, "Аэропорт Уфа")
-
-        // Detailed Ufa City Districts
-        addNode(11, 54.6980, 55.8300, "Уфа (Дёма - ул. Правды)")
-        addNode(12, 54.7220, 55.8450, "Уфа (Дёмское шоссе / Дагестанская)")
-        addNode(13, 54.6750, 55.8200, "Уфа (Дёма - Серебряный ручей / М-5)")
-        addNode(14, 54.7220, 55.9980, "Уфа (ТРК Иремель / ул. Бакалинская)")
-        addNode(15, 54.7180, 56.0120, "Уфа (ул. Генерала Горбатова / Менделеева)")
-        addNode(16, 54.7120, 56.0020, "Уфа (ул. Степана Кувыкина / Рабкоров)")
-        addNode(17, 54.7060, 55.9900, "Уфа (ул. Софьи Перовской / Авроры)")
-        addNode(18, 54.7260, 55.9440, "Уфа (Гостиный Двор / ул. Ленина)")
-        addNode(19, 54.7360, 55.9570, "Уфа (Центральный рынок / ул. Революционная)")
-        addNode(25, 54.7200, 55.9900, "Уфа (ПСЮ / Бакалинская)")
-        addNode(26, 54.7330, 56.0050, "Уфа (ПСЮ / Сагита Агиша)")
-        addNode(27, 54.7550, 56.0350, "Уфа (ПСЮ / 50 лет СССР)")
-        addNode(28, 54.7680, 56.0550, "Уфа (ПСЮ / Лесотехникума)")
-        addNode(36, 54.7700, 56.0700, "Уфа (Сипайлово - ул. Маршала Жукова)")
-        addNode(37, 54.7750, 56.0600, "Уфа (Сипайлово - ул. Гагарина)")
-        addNode(38, 54.8150, 56.0850, "Уфа (Черниковка - ул. Первомайская)")
-        addNode(39, 54.8250, 56.1100, "Уфа (Черниковка - ул. Кольцевая)")
-
-        // Intercity centers
-        addNode(20, 53.6333, 55.9500, "Стерлитамак")
-        addNode(21, 53.3606, 55.9247, "Салават")
-        addNode(22, 52.9597, 55.9322, "Мелеуз")
-        addNode(23, 52.7561, 55.7892, "Кумертау")
-        addNode(24, 53.4533, 56.0389, "Ишимбай")
-
-        addNode(30, 54.6067, 53.7031, "Туймазы")
-        addNode(31, 54.4815, 53.4710, "Октябрьский")
-        addNode(32, 54.1083, 54.1200, "Белебей")
-        addNode(33, 54.5956, 55.3858, "Чишмы")
-        addNode(34, 54.2231, 55.0347, "Давлеканово")
-        addNode(35, 54.0675, 55.0675, "Раевский")
-
-        addNode(40, 55.0392, 55.9781, "Благовещенск")
-        addNode(41, 55.4228, 55.5344, "Бирск")
-        addNode(42, 55.4853, 54.8647, "Дюртюли")
-        addNode(43, 56.0903, 54.2603, "Нефтекамск")
-        addNode(44, 56.2692, 54.9286, "Янаул")
-
-        addNode(50, 54.8317, 56.4172, "Иглино")
-        addNode(51, 53.9675, 58.4097, "Белорецк")
-        addNode(52, 54.3000, 59.4500, "Учалы")
-        addNode(53, 52.7233, 58.6533, "Сибай")
-        addNode(54, 52.5922, 58.3181, "Баймак")
-
-        addNode(60, 54.3722, 56.1783, "Кармаскалы")
-        addNode(61, 54.0153, 55.9378, "Толбазы")
-        addNode(62, 54.9856, 55.3458, "Кушнаренково")
-        addNode(63, 55.1328, 54.6531, "Чекмагуш")
-
-        // --- Ufa Internal Arterial Network ---
-        // Проспект Салавата Юлаева скоростной коридор
-        addEdge(6, 25, 80, "проспект Салавата Юлаева")
-        addEdge(25, 26, 80, "проспект Салавата Юлаева")
-        addEdge(26, 27, 80, "проспект Салавата Юлаева")
-        addEdge(27, 28, 80, "проспект Салавата Юлаева")
-        addEdge(28, 4, 70, "улица Сипайловская")
-        addEdge(4, 3, 70, "улица Сипайловская")
-        addEdge(6, 5, 80, "проспект Салавата Юлаева")
-        addEdge(5, 4, 80, "проспект Салавата Юлаева")
-
-        // Зелёная Роща
-        addEdge(25, 14, 60, "улица Бакалинская")
-        addEdge(14, 15, 60, "улица Менделеева")
-        addEdge(15, 5, 60, "улица Менделеева")
-        addEdge(15, 16, 60, "улица Степана Кувыкина")
-        addEdge(16, 17, 60, "улица Софьи Перовской")
-        addEdge(17, 6, 60, "улица Софьи Перовской")
-        addEdge(1, 5, 60, "улица Менделеева")
-        addEdge(5, 3, 60, "улица Менделеева")
-
-        // Центр & Проспект Октября
-        addEdge(1, 6, 60, "улица Заки Валиди")
-        addEdge(6, 1, 60, "улица Цюрупы")
-        addEdge(1, 18, 50, "улица Ленина")
-        addEdge(18, 19, 50, "улица Ленина")
-        addEdge(18, 6, 60, "улица Заки Валиди")
-        addEdge(19, 2, 60, "проспект Октября")
-        addEdge(1, 2, 60, "проспект Октября")
-        addEdge(2, 3, 60, "проспект Октября")
-        addEdge(26, 2, 60, "улица 50 лет СССР")
-
-        // Сипайлово & Черниковка
-        addEdge(2, 4, 60, "улица Маршала Жукова")
-        addEdge(4, 36, 60, "улица Маршала Жукова")
-        addEdge(36, 37, 60, "улица Юрия Гагарина")
-        addEdge(3, 38, 60, "улица Первомайская")
-        addEdge(38, 39, 60, "улица Кольцевая")
-
-        // Дёма & выезды
-        addEdge(12, 6, 80, "Дёмское шоссе")
-        addEdge(11, 12, 60, "улица Правды")
-        addEdge(13, 11, 60, "улица Дагестанская")
-        addEdge(13, 10, 90, "трасса М-5 «Урал»")
-        addEdge(11, 7, 60, "улица Ухтомского")
-        addEdge(7, 12, 60, "Дёмское шоссе")
-        addEdge(1, 7, 70, "Дёмское шоссе")
-        addEdge(7, 10, 80, "трасса М-5 «Урал»")
-        addEdge(6, 10, 90, "Оренбургский тракт (Р-240)")
-        addEdge(1, 8, 70, "Затонское шоссе")
-        addEdge(3, 9, 70, "улица Сельская Богородская")
-        addEdge(9, 50, 90, "трасса М-5 «Урал»")
-
-        // --- Regional Arterials ---
-        // South Corridor (R-240)
-        addEdge(10, 60, 90, "трасса Р-240")
-        addEdge(60, 61, 90, "трасса Р-240")
-        addEdge(61, 20, 90, "трасса Р-240") // to Sterlitamak
-        addEdge(20, 24, 70, "Стерлитамакский тракт") // to Ishimbay
-        addEdge(20, 21, 90, "трасса Р-240") // to Salavat
-        addEdge(21, 22, 90, "трасса Р-240") // to Meleuz
-        addEdge(22, 23, 90, "трасса Р-240") // to Kumertau
-
-        // West Corridor (M-5 / M-7)
-        addEdge(10, 33, 90, "трасса М-5 «Урал»") // to Chishmy
-        addEdge(33, 34, 80, "трасса Чишмы — Давлеканово")
-        addEdge(34, 35, 80, "трасса Давлеканово — Раевский")
-        addEdge(35, 32, 80, "трасса Раевский — Белебей")
-        addEdge(33, 30, 90, "трасса М-5 «Урал»") // to Tuymazy
-        addEdge(30, 31, 80, "трасса Туймазы — Октябрьский")
-        addEdge(8, 62, 90, "трасса М-7 «Волга»") // to Kushnarenkovo
-        addEdge(62, 63, 80, "трасса Кушнаренково — Чекмагуш")
-        addEdge(62, 42, 90, "трасса М-7 «Волга»") // to Dyurtyuli
-
-        // North Corridor
-        addEdge(3, 40, 90, "трасса Уфа — Благовещенск")
-        addEdge(40, 41, 90, "трасса Благовещенск — Бирск")
-        addEdge(41, 42, 80, "трасса Бирск — Дюртюли")
-        addEdge(42, 43, 90, "трасса Дюртюли — Нефтекамск")
-        addEdge(43, 44, 80, "трасса Нефтекамск — Янаул")
-        addEdge(41, 44, 80, "трасса Бирск — Янаул")
-
-        // East & Trans-Ural Corridor
-        addEdge(50, 51, 80, "трасса Р-316 (через Инзер на Белорецк)")
-        addEdge(51, 52, 80, "трасса Белорецк — Учалы")
-        addEdge(51, 54, 80, "трасса Белорецк — Баймак")
-        addEdge(54, 53, 80, "трасса Баймак — Сибай")
-        addEdge(24, 51, 70, "трасса Ишимбай — Белорецк")
-    }
-
     /**
-     * Finds nearest node in the graph to the given coordinate.
-     */
-    fun findNearestNode(lat: Double, lon: Double): GraphNode {
-        var bestNode = nodes.values.first()
-        var bestDist = Double.MAX_VALUE
-
-        for (node in nodes.values) {
-            val d = calculateDistanceMeters(lat, lon, node.lat, node.lon)
-            if (d < bestDist) {
-                bestDist = d
-                bestNode = node
-            }
-        }
-        return bestNode
-    }
-
-    /**
-     * Computes optimal car route using A* algorithm across Bashkortostan.
+     * Public route calculation entry point: delegates to production routing.db A* engine.
      */
     fun calculateRoute(
         startLat: Double,
@@ -940,211 +832,7 @@ internal object OfflineNavigationEngine {
         destLat: Double,
         destLon: Double,
         destinationLabel: String = "Пункт назначения",
-    ): NavigationRoute {
-        val startNode = findNearestNode(startLat, startLon)
-        val endNode = findNearestNode(destLat, destLon)
-
-        val directDist = calculateDistanceMeters(startLat, startLon, destLat, destLon)
-        val distToNode = calculateDistanceMeters(startLat, startLon, startNode.lat, startNode.lon)
-
-        val pathNodes = mutableListOf<GraphNode>()
-
-        if (startNode.id == endNode.id && directDist < distToNode) {
-            // Direct nearby segment, no detour needed
-        } else if (startNode.id == endNode.id) {
-            pathNodes.add(startNode)
-        } else {
-            // A* search
-            val dist = mutableMapOf<Int, Double>().withDefault { Double.MAX_VALUE }
-            val prev = mutableMapOf<Int, Pair<Int, GraphEdge>>()
-            val pq = PriorityQueue<Pair<Int, Double>>(compareBy { it.second })
-
-            dist[startNode.id] = 0.0
-            pq.add(Pair(startNode.id, 0.0))
-
-            while (pq.isNotEmpty()) {
-                val (currId, currentCost) = pq.poll() ?: break
-                if (currId == endNode.id) break
-                if (currentCost > (dist[currId] ?: Double.MAX_VALUE)) continue
-
-                val edges = adjacency[currId] ?: emptyList()
-                for (edge in edges) {
-                    // Cost by time: distance / speed
-                    val timeWeight = edge.distanceMeters / (edge.speedKmh * 1000.0 / 3600.0)
-                    val newCost = (dist[currId] ?: 0.0) + timeWeight
-
-                    if (newCost < (dist[edge.toId] ?: Double.MAX_VALUE)) {
-                        dist[edge.toId] = newCost
-                        prev[edge.toId] = Pair(currId, edge)
-                        val h = calculateDistanceMeters(nodes[edge.toId]!!.lat, nodes[edge.toId]!!.lon, endNode.lat, endNode.lon) / (90.0 * 1000.0 / 3600.0)
-                        pq.add(Pair(edge.toId, newCost + h))
-                    }
-                }
-            }
-
-            // Reconstruct path
-            var curr = endNode.id
-            pathNodes.add(endNode)
-            while (curr != startNode.id && prev.containsKey(curr)) {
-                val p = prev[curr]!!
-                curr = p.first
-                nodes[curr]?.let { pathNodes.add(it) }
-            }
-            pathNodes.reverse()
-        }
-
-        // Build full geometry coordinates list: Start -> Path Nodes -> End
-        val fullCoordinates = mutableListOf<Pair<Double, Double>>()
-        fullCoordinates.add(Pair(startLat, startLon))
-        for (n in pathNodes) {
-            fullCoordinates.add(Pair(n.lat, n.lon))
-        }
-        fullCoordinates.add(Pair(destLat, destLon))
-
-        // Calculate total distance & steps
-        var totalDistanceMeters = 0.0
-        var totalDurationSeconds = 0.0
-        val steps = mutableListOf<NavigationStep>()
-
-        // Depart step
-        val firstStreet = if (pathNodes.size > 1) {
-            adjacency[pathNodes[0].id]?.firstOrNull { it.toId == pathNodes[1].id }?.streetName ?: "дорога"
-        } else {
-            "дорога"
-        }
-
-        val firstTarget = pathNodes.firstOrNull()?.let { Pair(it.lat, it.lon) } ?: Pair(destLat, destLon)
-        steps.add(
-            NavigationStep(
-                instruction = "Начало движения по направлению к $destinationLabel",
-                streetName = firstStreet,
-                maneuverType = "depart",
-                maneuverModifier = null,
-                distanceMeters = calculateDistanceMeters(startLat, startLon, firstTarget.first, firstTarget.second),
-                durationSeconds = 60.0,
-                latitude = startLat,
-                longitude = startLon,
-            )
-        )
-
-        for (i in 0 until fullCoordinates.size - 1) {
-            val p1 = fullCoordinates[i]
-            val p2 = fullCoordinates[i + 1]
-            val segmentDist = calculateDistanceMeters(p1.first, p1.second, p2.first, p2.second)
-            totalDistanceMeters += segmentDist
-
-            // Estimate 60-90 km/h average
-            val speed = if (segmentDist > 5000) 90.0 else 55.0
-            val segDuration = segmentDist / (speed * 1000.0 / 3600.0)
-            totalDurationSeconds += segDuration
-
-            if (i in 1 until fullCoordinates.size - 2) {
-                val p0 = fullCoordinates[i - 1]
-                val b1 = calculateBearing(p0.first, p0.second, p1.first, p1.second)
-                val b2 = calculateBearing(p1.first, p1.second, p2.first, p2.second)
-                var diff = (b2 - b1) % 360.0
-                if (diff < -180.0) diff += 360.0
-                if (diff > 180.0) diff -= 360.0
-
-                val nodeName = if (i <= pathNodes.size) pathNodes[i - 1].name else "трасса"
-
-                if (abs(diff) >= 20.0) {
-                    val (maneuverType, modifier, action) = when {
-                        diff > 135.0 || diff < -135.0 -> Triple("turn", "u-turn", "Развернитесь")
-                        diff in 45.0..135.0 -> Triple("turn", "right", "Поверните направо")
-                        diff in 20.0..45.0 -> Triple("turn", "slight right", "Держитесь правее")
-                        diff in -135.0..-45.0 -> Triple("turn", "left", "Поверните налево")
-                        else -> Triple("turn", "slight left", "Держитесь левее")
-                    }
-
-                    steps.add(
-                        NavigationStep(
-                            instruction = "$action в сторону $nodeName",
-                            streetName = nodeName,
-                            maneuverType = maneuverType,
-                            maneuverModifier = modifier,
-                            distanceMeters = segmentDist,
-                            durationSeconds = segDuration,
-                            latitude = p1.first,
-                            longitude = p1.second,
-                        )
-                    )
-                }
-            }
-        }
-
-        // Arrive step
-        steps.add(
-            NavigationStep(
-                instruction = "Прибытие в пункт назначения: $destinationLabel",
-                streetName = destinationLabel,
-                maneuverType = "arrive",
-                maneuverModifier = null,
-                distanceMeters = 0.0,
-                durationSeconds = 0.0,
-                latitude = destLat,
-                longitude = destLon,
-            )
-        )
-
-        // GeoJSON FeatureCollection
-        val coordinatesJson = JSONArray()
-        for (coord in fullCoordinates) {
-            coordinatesJson.put(JSONArray().apply {
-                put(coord.second) // lon
-                put(coord.first)  // lat
-            })
-        }
-
-        val featureCollection = JSONObject().apply {
-            put("type", "FeatureCollection")
-            put("features", JSONArray().apply {
-                // LineString feature
-                put(JSONObject().apply {
-                    put("type", "Feature")
-                    put("geometry", JSONObject().apply {
-                        put("type", "LineString")
-                        put("coordinates", coordinatesJson)
-                    })
-                    put("properties", JSONObject().apply {
-                        put("selected", true)
-                        put("routeIndex", 0)
-                    })
-                })
-                // Destination point
-                put(JSONObject().apply {
-                    put("type", "Feature")
-                    put("geometry", JSONObject().apply {
-                        put("type", "Point")
-                        put("coordinates", JSONArray().apply {
-                            put(destLon)
-                            put(destLat)
-                        })
-                    })
-                    put("properties", JSONObject().apply {
-                        put("destination", true)
-                    })
-                })
-            })
-        }
-
-        val summary = if (totalDistanceMeters >= 1000) {
-            String.format(Locale.ROOT, "Офлайн-маршрут (%.1f км)", totalDistanceMeters / 1000.0)
-        } else {
-            String.format(Locale.ROOT, "Офлайн-маршрут (%d м)", totalDistanceMeters.roundToInt())
-        }
-
-        return NavigationRoute(
-            totalDistanceMeters = totalDistanceMeters,
-            totalDurationSeconds = totalDurationSeconds,
-            routeGeoJson = featureCollection.toString(),
-            coordinates = fullCoordinates,
-            steps = steps,
-            destination = PlaceTarget.Point(destLat, destLon),
-            destinationLabel = destinationLabel,
-            summary = summary,
-        )
-    }
+    ): NavigationRoute? = calculateRouteFromDatabase(startLat, startLon, destLat, destLon, destinationLabel)
 
     private fun calculateDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371000.0 // Earth radius in meters
@@ -1281,40 +969,140 @@ internal object OfflineNavigationEngine {
         val inLon: Double,
     )
 
+    data class RoadSegmentProjection(
+        val fromNode: Long,
+        val toNode: Long,
+        val projLat: Double,
+        val projLon: Double,
+        val distMeters: Double,
+        val roadName: String,
+        val roadType: String,
+    )
+
+    private fun projectPointOnSegment(
+        pLat: Double, pLon: Double,
+        aLat: Double, aLon: Double,
+        bLat: Double, bLon: Double,
+    ): Triple<Double, Double, Double> {
+        val dx = (bLon - aLon) * cos(Math.toRadians((aLat + bLat) / 2.0))
+        val dy = bLat - aLat
+        val lengthSq = dx * dx + dy * dy
+        if (lengthSq <= 1e-12) {
+            val d = calculateDistanceMeters(pLat, pLon, aLat, aLon)
+            return Triple(aLat, aLon, d)
+        }
+        val px = (pLon - aLon) * cos(Math.toRadians((aLat + bLat) / 2.0))
+        val py = pLat - aLat
+        val t = ((px * dx + py * dy) / lengthSq).coerceIn(0.0, 1.0)
+        val projLat = aLat + t * (bLat - aLat)
+        val projLon = aLon + t * (bLon - aLon)
+        val d = calculateDistanceMeters(pLat, pLon, projLat, projLon)
+        return Triple(projLat, projLon, d)
+    }
+
     private fun findNearestRoadNode(db: SQLiteDatabase, lat: Double, lon: Double): Long? {
-        val deltas = doubleArrayOf(0.005, 0.015, 0.05, 0.2)
+        val deltas = doubleArrayOf(0.003, 0.01, 0.03, 0.1)
         for (delta in deltas) {
-            val cursor = db.rawQuery(
-                """
-                SELECT id, lat, lon
-                FROM nodes
-                WHERE lat BETWEEN ? AND ?
-                  AND lon BETWEEN ? AND ?
-                """.trimIndent(),
-                arrayOf(
-                    (lat - delta).toString(),
-                    (lat + delta).toString(),
-                    (lon - delta).toString(),
-                    (lon + delta).toString(),
-                )
-            )
+            val minLat = lat - delta
+            val maxLat = lat + delta
+            val minLon = lon - delta
+            val maxLon = lon + delta
+
             var bestId: Long? = null
             var bestDist = Double.MAX_VALUE
-            cursor.use {
-                while (it.moveToNext()) {
-                    val nid = it.getLong(0)
-                    val nlat = it.getDouble(1)
-                    val nlon = it.getDouble(2)
-                    val d = calculateDistanceMeters(lat, lon, nlat, nlon)
-                    if (d < bestDist) {
-                        bestDist = d
-                        bestId = nid
+
+            // 1. High-speed R-Tree virtual table query
+            val rtreeQueried = runCatching {
+                db.rawQuery(
+                    """
+                    SELECT id, min_lat, min_lon
+                    FROM nodes_rtree
+                    WHERE min_lat >= ? AND max_lat <= ?
+                      AND min_lon >= ? AND max_lon <= ?
+                    LIMIT 250
+                    """.trimIndent(),
+                    arrayOf(minLat.toString(), maxLat.toString(), minLon.toString(), maxLon.toString())
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val nid = cursor.getLong(0)
+                        val nlat = cursor.getDouble(1)
+                        val nlon = cursor.getDouble(2)
+                        val d = calculateDistanceMeters(lat, lon, nlat, nlon)
+                        if (d < bestDist) {
+                            bestDist = d
+                            bestId = nid
+                        }
                     }
                 }
-            }
+                true
+            }.getOrDefault(false)
+
             if (bestId != null) return bestId
+
+            // 2. Standard nodes table fallback if R-Tree module or table missing
+            if (!rtreeQueried) {
+                db.rawQuery(
+                    """
+                    SELECT id, lat, lon
+                    FROM nodes
+                    WHERE lat BETWEEN ? AND ?
+                      AND lon BETWEEN ? AND ?
+                    LIMIT 250
+                    """.trimIndent(),
+                    arrayOf(minLat.toString(), maxLat.toString(), minLon.toString(), maxLon.toString())
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val nid = cursor.getLong(0)
+                        val nlat = cursor.getDouble(1)
+                        val nlon = cursor.getDouble(2)
+                        val d = calculateDistanceMeters(lat, lon, nlat, nlon)
+                        if (d < bestDist) {
+                            bestDist = d
+                            bestId = nid
+                        }
+                    }
+                }
+                if (bestId != null) return bestId
+            }
         }
         return null
+    }
+
+    private fun findNearestRoadSegment(db: SQLiteDatabase, lat: Double, lon: Double): RoadSegmentProjection? {
+        val nearNode = findNearestRoadNode(db, lat, lon) ?: return null
+
+        var bestProj: RoadSegmentProjection? = null
+        var minDistance = Double.MAX_VALUE
+
+        db.rawQuery(
+            """
+            SELECT e.from_node, e.to_node, n1.lat, n1.lon, n2.lat, n2.lon, e.road_name, e.road_type
+            FROM edges e
+            JOIN nodes n1 ON e.from_node = n1.id
+            JOIN nodes n2 ON e.to_node = n2.id
+            WHERE e.from_node = ? OR e.to_node = ?
+            LIMIT 50
+            """.trimIndent(),
+            arrayOf(nearNode.toString(), nearNode.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val fNode = cursor.getLong(0)
+                val tNode = cursor.getLong(1)
+                val lat1 = cursor.getDouble(2)
+                val lon1 = cursor.getDouble(3)
+                val lat2 = cursor.getDouble(4)
+                val lon2 = cursor.getDouble(5)
+                val rName = cursor.getString(6) ?: ""
+                val rType = cursor.getString(7) ?: ""
+
+                val (pLat, pLon, pDist) = projectPointOnSegment(lat, lon, lat1, lon1, lat2, lon2)
+                if (pDist < minDistance) {
+                    minDistance = pDist
+                    bestProj = RoadSegmentProjection(fNode, tNode, pLat, pLon, pDist, rName, rType)
+                }
+            }
+        }
+        return bestProj
     }
 
     /**
@@ -1414,11 +1202,14 @@ internal object OfflineNavigationEngine {
                 return null
             }
 
-            val startNode = findNearestRoadNode(db, startLat, startLon) ?: run {
+            val startProj = findNearestRoadSegment(db, startLat, startLon)
+            val destProj = findNearestRoadSegment(db, destLat, destLon)
+
+            val startNode = startProj?.toNode ?: findNearestRoadNode(db, startLat, startLon) ?: run {
                 Log.w(TAG, "calculateSingleRouteInternal: start node not found for ($startLat, $startLon)")
                 return null
             }
-            val destNode = findNearestRoadNode(db, destLat, destLon) ?: run {
+            val destNode = destProj?.fromNode ?: findNearestRoadNode(db, destLat, destLon) ?: run {
                 Log.w(TAG, "calculateSingleRouteInternal: dest node not found for ($destLat, $destLon)")
                 return null
             }
@@ -1539,6 +1330,17 @@ internal object OfflineNavigationEngine {
 
                 val (uLat, uLon) = getNodeCoord(u)
 
+                data class OutEdge(
+                    val v: Long,
+                    val lenM: Double,
+                    val speed: Double,
+                    val rName: String,
+                    val rType: String,
+                    val outWay: Long,
+                    val vLat: Double,
+                    val vLon: Double,
+                )
+                val outEdges = ArrayList<OutEdge>()
                 db.rawQuery(
                     """
                     SELECT e.to_node, e.length_m, e.speed_kmh, e.road_name, e.road_type, e.osm_way_id, n.lat, n.lon
@@ -1549,17 +1351,33 @@ internal object OfflineNavigationEngine {
                     arrayOf(u.toString())
                 ).use { cursor ->
                     while (cursor.moveToNext()) {
-                        val v = cursor.getLong(0)
-                        val lenM = cursor.getDouble(1)
-                        val speed = cursor.getDouble(2).coerceAtLeast(5.0)
-                        val rName = cursor.getString(3) ?: ""
-                        val rType = cursor.getString(4) ?: "residential"
-                        val outWay = cursor.getLong(5)
-                        val vLat = cursor.getDouble(6)
-                        val vLon = cursor.getDouble(7)
+                        outEdges.add(
+                            OutEdge(
+                                v = cursor.getLong(0),
+                                lenM = cursor.getDouble(1),
+                                speed = cursor.getDouble(2).coerceAtLeast(5.0),
+                                rName = cursor.getString(3) ?: "",
+                                rType = cursor.getString(4) ?: "residential",
+                                outWay = cursor.getLong(5),
+                                vLat = cursor.getDouble(6),
+                                vLon = cursor.getDouble(7),
+                            )
+                        )
+                    }
+                }
 
-                        // Avoid immediate 180° U-turn back to parent on same segment
-                        if (v == parentNode) continue
+                for (edge in outEdges) {
+                    val v = edge.v
+                    val lenM = edge.lenM
+                    val speed = edge.speed
+                    val rName = edge.rName
+                    val rType = edge.rType
+                    val outWay = edge.outWay
+                    val vLat = edge.vLat
+                    val vLon = edge.vLon
+
+                    // Avoid immediate 180° U-turn back to parent on same segment UNLESS it is a dead end (cul-de-sac)
+                    if (v == parentNode && outEdges.size > 1) continue
 
                         // Turn restrictions check
                         if (inWay != 0L && !isTurnAllowed(restrictions, u, inWay, outWay)) {
@@ -1625,7 +1443,6 @@ internal object OfflineNavigationEngine {
                         }
                     }
                 }
-            }
 
             if (reachedState == null) {
                 Log.w(TAG, "calculateSingleRouteInternal: route not found after $expanded expansions")
@@ -1645,11 +1462,17 @@ internal object OfflineNavigationEngine {
 
             val fullCoordinates = ArrayList<Pair<Double, Double>>()
             fullCoordinates.add(Pair(startLat, startLon))
+            if (startProj != null && startProj.distMeters < 250.0) {
+                fullCoordinates.add(Pair(startProj.projLat, startProj.projLon))
+            }
             for (hop in pathEdges) {
                 val (lat, lon) = getNodeCoord(hop.toNode)
                 if (lat != 0.0 && lon != 0.0) {
                     fullCoordinates.add(Pair(lat, lon))
                 }
+            }
+            if (destProj != null && destProj.distMeters < 250.0) {
+                fullCoordinates.add(Pair(destProj.projLat, destProj.projLon))
             }
             fullCoordinates.add(Pair(destLat, destLon))
 

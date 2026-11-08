@@ -19,7 +19,10 @@ private const val TAG = "OfflineTileProvider"
 internal class OfflineTileProvider(private val context: Context) {
     private var database: SQLiteDatabase? = null
     private var activeFile: File? = null
-    private val tileCache = object : LruCache<Long, ByteArray>(256) {}
+    // Byte-bounded LRU cache: 32MB max to prevent OutOfMemory on in-car head units
+    private val tileCache = object : LruCache<Long, ByteArray>(32 * 1024 * 1024) {
+        override fun sizeOf(key: Long, value: ByteArray): Int = value.size
+    }
 
     // Bounds: [minLon, minLat, maxLon, maxLat]
     var bounds: DoubleArray = doubleArrayOf(53.18, 51.57, 60.01, 56.55)
@@ -166,12 +169,15 @@ internal class OfflineTileProvider(private val context: Context) {
                     try {
                         GZIPInputStream(pbf.inputStream()).use { it.readBytes() }
                     } catch (e: Exception) {
-                        pbf
+                        Log.e(TAG, "Corrupt GZIP in tile z=$z, x=$x, y=$y", e)
+                        null
                     }
                 } else {
                     pbf
                 }
-                tileCache.put(key, decompressed)
+                if (decompressed != null) {
+                    tileCache.put(key, decompressed)
+                }
                 decompressed
             } else {
                 null
