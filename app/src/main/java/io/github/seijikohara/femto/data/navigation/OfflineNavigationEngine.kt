@@ -206,6 +206,18 @@ internal object OfflineNavigationEngine {
     private var searchDatabase: SQLiteDatabase? = null
     private var routingDatabase: SQLiteDatabase? = null
 
+    @Volatile
+    private var lastKnownUserLat: Double? = null
+    @Volatile
+    private var lastKnownUserLon: Double? = null
+
+    fun updateUserLocation(lat: Double, lon: Double) {
+        if (!lat.isNaN() && !lon.isNaN() && lat != 0.0 && lon != 0.0) {
+            lastKnownUserLat = lat
+            lastKnownUserLon = lon
+        }
+    }
+
     fun init(context: android.content.Context) {
         if (appContext == null) {
             appContext = context.applicationContext
@@ -425,7 +437,64 @@ internal object OfflineNavigationEngine {
         val isUfa: Boolean,
         val startsWithQuery: Boolean,
         val containsQuery: Boolean,
+        val distanceMeters: Double = Double.MAX_VALUE,
+        val isExactAddress: Boolean = false,
+        val isExactStreet: Boolean = false,
+        val isPoiOrStore: Boolean = false,
     )
+
+    private fun formatPoiSubtitle(
+        sub: String,
+        category: String?,
+        distMeters: Double,
+        hasLocation: Boolean,
+    ): String {
+        val subMap = mapOf(
+            "shop:supermarket" to "Супермаркет",
+            "shop:convenience" to "Продуктовый магазин",
+            "shop:chemist" to "Косметика и бытовая химия",
+            "shop:alcohol" to "Магазин напитков",
+            "shop:beverages" to "Магазин напитков",
+            "shop:clothes" to "Магазин одежды",
+            "shop:shoes" to "Обувной магазин",
+            "shop:mobile_phone" to "Салон связи",
+            "shop:mall" to "Торговый центр",
+            "shop:outpost" to "Пункт выдачи",
+            "shop:department_store" to "Универмаг",
+            "shop:bakery" to "Пекарня",
+            "amenity:pharmacy" to "Аптека",
+            "amenity:fuel" to "АЗС",
+            "amenity:bank" to "Банк",
+            "amenity:restaurant" to "Ресторан",
+            "amenity:cafe" to "Кафе",
+            "amenity:fast_food" to "Быстрое питание",
+            "amenity:car_wash" to "Автомойка",
+            "amenity:parking" to "Парковка",
+            "amenity:hospital" to "Больница",
+            "amenity:clinic" to "Поликлиника",
+        )
+        val cleanSub = subMap[sub] ?: if (sub.startsWith("shop:") || sub.startsWith("amenity:")) {
+            val raw = sub.substringAfter(':').replace('_', ' ')
+            raw.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+        } else {
+            sub.ifBlank { "Магазин / Заведение" }
+        }
+
+        return if (hasLocation && distMeters < 500_000.0) {
+            val distStr = if (distMeters < 1000.0) {
+                "${distMeters.roundToInt()} м"
+            } else {
+                String.format(Locale.ROOT, "%.1f км", distMeters / 1000.0)
+            }
+            if (cleanSub.isNotBlank() && cleanSub != "poi") {
+                "$cleanSub · $distStr"
+            } else {
+                distStr
+            }
+        } else {
+            cleanSub
+        }
+    }
 
     private fun normalizeHouseNumber(hn: String): String {
         val sb = StringBuilder()
@@ -447,7 +516,16 @@ internal object OfflineNavigationEngine {
         val lon: Double,
     )
 
-    fun searchPlaces(query: String, maxResults: Int = 80): List<AddressSuggestion> {
+    fun searchPlaces(
+        query: String,
+        maxResults: Int = 80,
+        userLat: Double? = null,
+        userLon: Double? = null,
+    ): List<AddressSuggestion> {
+        val effLat = userLat ?: lastKnownUserLat
+        val effLon = userLon ?: lastKnownUserLon
+        val hasLocation = (effLat != null && effLon != null && !effLat.isNaN() && !effLon.isNaN() && effLat != 0.0 && effLon != 0.0)
+
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
 
@@ -457,7 +535,7 @@ internal object OfflineNavigationEngine {
         val rawTokens = cleanQuery.split(Regex("""\s+""")).filter { it.isNotBlank() }
         if (rawTokens.isEmpty()) return emptyList()
 
-        // Expand common Russian street abbreviations (e.g. "пр о. 24" -> "проспект октября 24")
+        // Expand common Russian street & store abbreviations (e.g. "пр о. 24", "кб", "к&б")
         val expandedTokens = mutableListOf<String>()
         var tokIdx = 0
         while (tokIdx < rawTokens.size) {
@@ -467,6 +545,10 @@ internal object OfflineNavigationEngine {
                 tok == "ул" -> expandedTokens.add("улица")
                 tok == "б-р" || tok == "бул" -> expandedTokens.add("бульвар")
                 tok == "пер" -> expandedTokens.add("переулок")
+                tok == "кб" || tok == "к&б" -> {
+                    expandedTokens.add("красное")
+                    expandedTokens.add("белое")
+                }
                 (tok == "о" || tok == "окт") && tokIdx > 0 && expandedTokens.last() in setOf("проспект", "пр", "просп") -> expandedTokens.add("октября")
                 tok == "с" && tokIdx + 1 < rawTokens.size && rawTokens[tokIdx + 1].lowercase(Locale.ROOT).startsWith("юлаев") -> expandedTokens.add("салавата")
                 else -> expandedTokens.add(tok)
@@ -528,6 +610,7 @@ internal object OfflineNavigationEngine {
                                     val lat = cursor.getDouble(3)
                                     val lon = cursor.getDouble(4)
                                     val isExact = hn.equals(houseNum, ignoreCase = true)
+                                    val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
 
                                     candidates.add(
                                         ScoredCandidate(
@@ -535,10 +618,14 @@ internal object OfflineNavigationEngine {
                                             subtitle = if (city.isBlank()) "Уфа" else city,
                                             lat = lat,
                                             lon = lon,
-                                            priority = if (isExact) 100 else 90,
+                                            priority = if (isExact) 1000 else 900,
                                             isUfa = city.isBlank() || city.equals("Уфа", ignoreCase = true),
                                             startsWithQuery = true,
                                             containsQuery = true,
+                                            distanceMeters = dist,
+                                            isExactAddress = isExact,
+                                            isExactStreet = false,
+                                            isPoiOrStore = false,
                                         )
                                     )
                                 }
@@ -548,10 +635,10 @@ internal object OfflineNavigationEngine {
                         // 1. Street search FIRST when user didn't enter a house number!
                         val stClean = cleanTokens.filter { t ->
                             val lower = t.lowercase(Locale.ROOT)
-                            lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "проезд", "шоссе", "ш", "г", "город")
+                            lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "проезд", "шоссе", "ш", "г", "город", "кб")
                         }.ifEmpty { cleanTokens }
 
-                        if (stClean.isNotEmpty()) {
+                        if (stClean.isNotEmpty() && !qLower.startsWith("кб")) {
                             val stConds = stClean.map { "s.aliases LIKE ?" }
                             val stParams = stClean.map { "%${it.lowercase(Locale.ROOT)}%" }.toMutableList()
 
@@ -574,6 +661,7 @@ internal object OfflineNavigationEngine {
                                     val ql = cleanQuery.lowercase(Locale.ROOT)
                                     val isUfa = city.isBlank() || city.equals("Уфа", ignoreCase = true)
                                     var score = 100
+                                    val isExactSt = (nl == ql || nl.startsWith(ql) || (ql.length >= 4 && nl.contains(ql)))
                                     if (nl == ql) score += 300
                                     else if (nl.startsWith(ql)) score += 150
                                     else if (nl.contains(ql)) score += 80
@@ -587,6 +675,8 @@ internal object OfflineNavigationEngine {
                                         if (city.isBlank()) "Улица, Уфа" else "Улица, $city"
                                     }
 
+                                    val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
+
                                     matchedStreets.add(
                                         ScoredCandidate(
                                             title = name,
@@ -597,6 +687,10 @@ internal object OfflineNavigationEngine {
                                             isUfa = isUfa,
                                             startsWithQuery = nl.startsWith(ql),
                                             containsQuery = nl.contains(ql),
+                                            distanceMeters = dist,
+                                            isExactAddress = false,
+                                            isExactStreet = isExactSt,
+                                            isPoiOrStore = false,
                                         )
                                     )
                                 }
@@ -612,43 +706,89 @@ internal object OfflineNavigationEngine {
                             }
                         }
 
-                        // 2. Search places by TITLE ONLY (so shops do not appear when querying a street)
+                        // 2. Search places by TITLE ONLY (ordered by distance to user!)
+                        val categoryStopWords = setOf(
+                            "магазин", "супермаркет", "гипермаркет", "универсам", "тц", "трц", "тк", "трк",
+                            "аптека", "азс", "заправка", "автомойка", "мойка", "шиномонтаж", "ресторан", "кафе", "банк", "салон"
+                        )
                         val placeClean = cleanTokens.filter { t ->
                             val lower = t.lowercase(Locale.ROOT)
-                            lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "шоссе")
+                            lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "шоссе") &&
+                            (cleanTokens.size == 1 || lower !in categoryStopWords)
                         }.ifEmpty { cleanTokens }
-                        val titleFts = placeClean.joinToString(" AND ") { "$it*" }
+
+                        val ftsTerms = mutableListOf<String>()
+                        for (tok in placeClean) {
+                            val low = tok.lowercase(Locale.ROOT)
+                            if (low == "кб" || low == "к&б") {
+                                ftsTerms.add("(красное* AND белое*)")
+                            } else {
+                                val tokE = low.replace('ё', 'е')
+                                val tokYo = low.replace('е', 'ё')
+                                if (tokE != tokYo) {
+                                    ftsTerms.add("($tokE* OR $tokYo*)")
+                                } else {
+                                    ftsTerms.add("$low*")
+                                }
+                            }
+                        }
+                        val titleFts = ftsTerms.joinToString(" AND ")
 
                         runCatching {
-                            val placesSql = """
-                                SELECT p.title, p.subtitle, p.lat, p.lon, p.category, p.priority
-                                FROM places_fts f
-                                JOIN places p ON f.rowid = p.id
-                                WHERE f.title MATCH ?
-                                ORDER BY
-                                    CASE WHEN p.subtitle LIKE '%Уфа%' OR p.subtitle = 'Уфа' THEN 0 ELSE 1 END ASC,
-                                    p.priority DESC
-                                LIMIT ${(maxResults - candidates.size).coerceAtLeast(1)}
-                            """.trimIndent()
+                            val placesSql = if (hasLocation) {
+                                """
+                                    SELECT p.title, p.subtitle, p.lat, p.lon, p.category, p.priority,
+                                           ((p.lat - ?) * (p.lat - ?) + (p.lon - ?) * (p.lon - ?) * 0.333) as dist_sq
+                                    FROM places_fts f
+                                    JOIN places p ON f.rowid = p.id
+                                    WHERE f.title MATCH ?
+                                    ORDER BY dist_sq ASC
+                                    LIMIT ${(maxResults - candidates.size).coerceAtLeast(10)}
+                                """.trimIndent()
+                            } else {
+                                """
+                                    SELECT p.title, p.subtitle, p.lat, p.lon, p.category, p.priority, 0.0 as dist_sq
+                                    FROM places_fts f
+                                    JOIN places p ON f.rowid = p.id
+                                    WHERE f.title MATCH ?
+                                    ORDER BY
+                                        CASE WHEN p.subtitle LIKE '%Уфа%' OR p.subtitle = 'Уфа' OR p.subtitle LIKE 'shop:%' OR p.subtitle LIKE 'amenity:%' THEN 0 ELSE 1 END ASC,
+                                        p.priority DESC
+                                    LIMIT ${(maxResults - candidates.size).coerceAtLeast(10)}
+                                """.trimIndent()
+                            }
 
-                            db.rawQuery(placesSql, arrayOf(titleFts)).use { cursor ->
+                            val placesArgs = if (hasLocation) {
+                                arrayOf(effLat.toString(), effLat.toString(), effLon.toString(), effLon.toString(), titleFts)
+                            } else {
+                                arrayOf(titleFts)
+                            }
+
+                            db.rawQuery(placesSql, placesArgs).use { cursor ->
                                 while (cursor.moveToNext()) {
                                     val title = cursor.getString(0)
                                     val sub = cursor.getString(1) ?: "Уфа"
                                     val lat = cursor.getDouble(2)
                                     val lon = cursor.getDouble(3)
+                                    val cat = cursor.getString(4)
                                     val prio = cursor.getInt(5)
+                                    val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
+                                    val displaySub = formatPoiSubtitle(sub, cat, dist, hasLocation)
 
                                     candidates.add(
                                         ScoredCandidate(
                                             title = title,
-                                            subtitle = sub,
+                                            subtitle = displaySub,
                                             lat = lat,
                                             lon = lon,
                                             priority = prio,
-                                            isUfa = sub.contains("Уфа", ignoreCase = true),
+                                            isUfa = true,
                                             startsWithQuery = title.lowercase(Locale.ROOT).startsWith(qLower),
                                             containsQuery = title.lowercase(Locale.ROOT).contains(qLower),
+                                            distanceMeters = dist,
+                                            isExactAddress = false,
+                                            isExactStreet = false,
+                                            isPoiOrStore = true,
                                         )
                                     )
                                 }
@@ -725,6 +865,7 @@ internal object OfflineNavigationEngine {
                                 val rank = hCursor.getInt(3)
                                 val isExact = (rank == 0)
                                 val isUfa = street.city.isBlank() || street.city.equals("Уфа", ignoreCase = true)
+                                val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
 
                                 candidates.add(
                                     ScoredCandidate(
@@ -732,10 +873,14 @@ internal object OfflineNavigationEngine {
                                         subtitle = if (street.city.isBlank()) "Уфа" else street.city,
                                         lat = lat,
                                         lon = lon,
-                                        priority = if (isExact) 100 else (90 - rank * 5),
+                                        priority = if (isExact) 1000 else (900 - rank * 5),
                                         isUfa = isUfa,
                                         startsWithQuery = true,
                                         containsQuery = true,
+                                        distanceMeters = dist,
+                                        isExactAddress = isExact,
+                                        isExactStreet = false,
+                                        isPoiOrStore = false,
                                     )
                                 )
                             }
@@ -753,29 +898,55 @@ internal object OfflineNavigationEngine {
                     val poiConds = poiClean.map { "p.name LIKE ?" }
                     val poiParams = poiClean.map { "%${it.lowercase(Locale.ROOT)}%" }.toMutableList()
 
-                    val poiSql = """
-                        SELECT p.name, p.subtitle, p.lat, p.lon
-                        FROM poi p
-                        WHERE ${poiConds.joinToString(" AND ")}
-                        LIMIT ${(maxResults - candidates.size).coerceAtLeast(1)}
-                    """.trimIndent()
+                    val poiSql = if (hasLocation) {
+                        """
+                            SELECT p.name, p.subtitle, p.lat, p.lon,
+                                   ((p.lat - ?) * (p.lat - ?) + (p.lon - ?) * (p.lon - ?) * 0.333) as dist_sq
+                            FROM poi p
+                            WHERE ${poiConds.joinToString(" AND ")}
+                            ORDER BY dist_sq ASC
+                            LIMIT ${(maxResults - candidates.size).coerceAtLeast(1)}
+                        """.trimIndent()
+                    } else {
+                        """
+                            SELECT p.name, p.subtitle, p.lat, p.lon, 0.0 as dist_sq
+                            FROM poi p
+                            WHERE ${poiConds.joinToString(" AND ")}
+                            LIMIT ${(maxResults - candidates.size).coerceAtLeast(1)}
+                        """.trimIndent()
+                    }
 
-                    db.rawQuery(poiSql, poiParams.toTypedArray()).use { cursor ->
+                    val poiArgs = if (hasLocation) {
+                        val qList = mutableListOf(effLat.toString(), effLat.toString(), effLon.toString(), effLon.toString())
+                        qList.addAll(poiParams)
+                        qList.toTypedArray()
+                    } else {
+                        poiParams.toTypedArray()
+                    }
+
+                    db.rawQuery(poiSql, poiArgs).use { cursor ->
                         while (cursor.moveToNext()) {
                             val name = cursor.getString(0)
                             val sub = cursor.getString(1) ?: "POI"
                             val lat = cursor.getDouble(2)
                             val lon = cursor.getDouble(3)
+                            val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
+                            val displaySub = formatPoiSubtitle(sub, null, dist, hasLocation)
+
                             candidates.add(
                                 ScoredCandidate(
                                     title = name,
-                                    subtitle = sub,
+                                    subtitle = displaySub,
                                     lat = lat,
                                     lon = lon,
                                     priority = 95,
                                     isUfa = true,
                                     startsWithQuery = true,
                                     containsQuery = true,
+                                    distanceMeters = dist,
+                                    isExactAddress = false,
+                                    isExactStreet = false,
+                                    isPoiOrStore = true,
                                 )
                             )
                         }
@@ -786,10 +957,10 @@ internal object OfflineNavigationEngine {
                 if (candidates.size < maxResults && houseNum == null) {
                     val stClean = streetTokens.filter { t ->
                         val lower = t.lowercase(Locale.ROOT)
-                        lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "проезд", "шоссе", "ш", "г", "город", "уфа")
+                        lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "проезд", "шоссе", "ш", "г", "город", "уфа", "кб")
                     }.ifEmpty { streetTokens }
 
-                    if (stClean.isNotEmpty()) {
+                    if (stClean.isNotEmpty() && !qLower.startsWith("кб")) {
                         val stConds = stClean.map { "s.aliases LIKE ?" }
                         val stParams = stClean.map { "%${it.lowercase(Locale.ROOT)}%" }.toMutableList()
 
@@ -809,6 +980,7 @@ internal object OfflineNavigationEngine {
                                 val city = cursor.getString(1) ?: "Уфа"
                                 val lat = cursor.getDouble(2)
                                 val lon = cursor.getDouble(3)
+                                val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, lat, lon) else Double.MAX_VALUE
                                 candidates.add(
                                     ScoredCandidate(
                                         title = name,
@@ -819,6 +991,10 @@ internal object OfflineNavigationEngine {
                                         isUfa = city.isBlank() || city.equals("Уфа", ignoreCase = true),
                                         startsWithQuery = true,
                                         containsQuery = true,
+                                        distanceMeters = dist,
+                                        isExactAddress = false,
+                                        isExactStreet = false,
+                                        isPoiOrStore = false,
                                     )
                                 )
                             }
@@ -839,6 +1015,7 @@ internal object OfflineNavigationEngine {
                     val isUfa = isUfaLocation(entry.title, entry.subtitle, entry.lat, entry.lon)
                     val startsWith = titleL.startsWith(qLower) || titleL.startsWith(qRoot)
                     val contains = titleL.contains(qLower) || titleL.contains(qRoot)
+                    val dist = if (hasLocation) calculateDistanceMeters(effLat, effLon, entry.lat, entry.lon) else Double.MAX_VALUE
 
                     candidates.add(
                         ScoredCandidate(
@@ -850,23 +1027,60 @@ internal object OfflineNavigationEngine {
                             isUfa = isUfa,
                             startsWithQuery = startsWith,
                             containsQuery = contains,
+                            distanceMeters = dist,
+                            isExactAddress = false,
+                            isExactStreet = false,
+                            isPoiOrStore = true,
                         )
                     )
                 }
             }
         }
 
-        val seen = mutableSetOf<String>()
-        return candidates
-            .sortedWith(
+        val sortedCandidates = if (hasLocation) {
+            candidates.sortedWith { a, b ->
+                // 1. Exact address matches (with house numbers) always rank first
+                if (a.isExactAddress != b.isExactAddress) {
+                    return@sortedWith if (a.isExactAddress) -1 else 1
+                }
+
+                // 2. Exact street matches (user entered street name)
+                if (a.isExactStreet != b.isExactStreet) {
+                    return@sortedWith if (a.isExactStreet) -1 else 1
+                }
+
+                // 3. For POIs / stores: sort strictly by distance (nearest first)!
+                if (a.isPoiOrStore && b.isPoiOrStore) {
+                    return@sortedWith a.distanceMeters.compareTo(b.distanceMeters)
+                }
+
+                // 4. If one is POI/store and the other is a street/place:
+                if (a.isPoiOrStore != b.isPoiOrStore) {
+                    if (a.isPoiOrStore && a.distanceMeters < 5_000.0) return@sortedWith -1
+                    if (b.isPoiOrStore && b.distanceMeters < 5_000.0) return@sortedWith 1
+                }
+
+                // 5. General fallback: distance first, then priority
+                val distCmp = a.distanceMeters.compareTo(b.distanceMeters)
+                if (distCmp != 0 && a.distanceMeters < 50_000.0 && b.distanceMeters < 50_000.0) {
+                    return@sortedWith distCmp
+                }
+                b.priority.compareTo(a.priority)
+            }
+        } else {
+            candidates.sortedWith(
                 compareByDescending<ScoredCandidate> { it.isUfa }
                     .thenByDescending { it.priority }
                     .thenByDescending { it.startsWithQuery }
                     .thenByDescending { it.containsQuery }
             )
+        }
+
+        val seen = mutableSetOf<String>()
+        return sortedCandidates
             .filter {
                 val cleanTitle = it.title.lowercase(Locale.ROOT).replace(Regex("""[,.\s]+"""), " ").trim()
-                val key = "${cleanTitle}_${String.format(Locale.ROOT, "%.4f", it.lat)}"
+                val key = "${cleanTitle}_${String.format(Locale.ROOT, "%.3f_%.3f", it.lat, it.lon)}"
                 seen.add(key)
             }
             .take(maxResults)

@@ -104,7 +104,19 @@ internal class DestinationViewModel(
             )
         }.stateIn(viewModelScope, WhileUiSubscribed, DestinationUiState.Initial)
 
+    private var lastKnownLocation: Location? = null
+
     init {
+        // Continuously cache last known location fix for instant nearest-store searches
+        viewModelScope.launch {
+            locationFlow.collect { loc ->
+                if (loc != null) {
+                    lastKnownLocation = loc
+                    OfflineNavigationEngine.updateUserLocation(loc.latitude, loc.longitude)
+                }
+            }
+        }
+
         // A final transcript becomes the query, and the recognizer goes back to
         // Idle so the same result is not applied twice and the mic is ready
         // for another try. Partial transcripts only show in the voice line.
@@ -130,7 +142,7 @@ internal class DestinationViewModel(
                     } else {
                         isSearchingSuggestions.value = true
                         try {
-                            val lastLocation = withTimeoutOrNull(200) { locationFlow.firstOrNull() }
+                            val lastLocation = lastKnownLocation ?: withTimeoutOrNull(100) { locationFlow.firstOrNull() }
                             val results = destinationGeocoder.searchSuggestions(trimmed, lastLocation)
                             suggestions.value = results
                         } catch (e: Exception) {

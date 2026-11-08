@@ -202,8 +202,13 @@ internal class DestinationGeocoder(
             }
 
             // 1. OFFLINE FIRST: Query local SQLite geocoding.db immediately (<5ms)
+            val userLat = userLocation?.latitude
+            val userLon = userLocation?.longitude
+            if (userLat != null && userLon != null) {
+                OfflineNavigationEngine.updateUserLocation(userLat, userLon)
+            }
             val localResults = runCatching {
-                OfflineNavigationEngine.searchPlaces(query, maxResults)
+                OfflineNavigationEngine.searchPlaces(query, maxResults, userLat, userLon)
             }.getOrDefault(emptyList())
 
             val onlineResults = ArrayList<AddressSuggestion>()
@@ -329,9 +334,9 @@ internal class DestinationGeocoder(
             val combined = (localResults + onlineResults)
                 .filter { isRussianLocation(it.title, it.subtitle, it.point.latitude, it.point.longitude) }
                 .distinctBy {
-                    // Normalize deduplication key
+                    // Normalize deduplication key (preserves distinct locations / branches)
                     val cleanTitle = it.title.lowercase(Locale.ROOT).replace(Regex("""[,.\s]+"""), " ").trim()
-                    cleanTitle
+                    "${cleanTitle}_${String.format(Locale.ROOT, "%.3f_%.3f", it.point.latitude, it.point.longitude)}"
                 }
                 .take(maxResults)
 

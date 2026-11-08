@@ -594,6 +594,7 @@ private fun DashboardContent(
     LaunchedEffect(uiState.location) {
         val loc = uiState.location
         if (loc != null) {
+            OfflineNavigationEngine.updateUserLocation(loc.latitude, loc.longitude)
             isOfflineAreaAllowed = OfflineNavigationEngine.isOfflineDataAvailable() &&
                 OfflineNavigationEngine.isInsideDownloadedArea(loc.latitude, loc.longitude)
         }
