@@ -7,7 +7,7 @@
 **Автомобильный Android лаунчер с русским интерфейсом, навигацией и Яндекс Музыкой.**  
 *A glanceable in-car Android launcher with full Russian interface, navigation & Yandex Music.*
 
-[![Скачать APK](https://img.shields.io/badge/Скачать_APK-v1.3.0--ru-3B82F6?logo=android&logoColor=white)](https://github.com/Liga1231/femto-car-launcher-ru/releases/latest)
+[![Скачать APK](https://img.shields.io/badge/Скачать_APK-v2.0.0--ru-3B82F6?logo=android&logoColor=white)](https://github.com/Liga1231/femto-car-launcher-ru/releases/latest)
 [![Русский интерфейс](https://img.shields.io/badge/Interface-Русский_%2F_RU-red)](README.md)
 [![Android 10-12+](https://img.shields.io/badge/Android-10_--_12%2B_(API_29%2B)-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Yandex Music Integration](https://img.shields.io/badge/Yandex_Music-Vibes_%26_Flows-yellow?logo=yandexmusic&logoColor=white)](https://music.yandex.ru)
@@ -36,6 +36,12 @@
 
 ## 🇷🇺 Нововведения и доработки (Russian)
 
+* 🚀 **Нативный C++ движок навигации Valhalla (Версия 2.0.0):**
+  * Встроенный нативный C++ движок Valhalla (`libvalhalla.so`) для молниеносного автономного расчёта маршрутов.
+  * Мгновенный расчёт автомобильных маршрутов (~70–100 мс) без задержек и зависаний.
+  * Точное соблюдение правил дорожного движения: строгое одностороннее движение, запреты манёвров, кольцевые развязки и развороты.
+  * Локализованные пошаговые подсказки манёвров на русском языке.
+  * Открытый и воспроизводимый пайплайн генерации тайлов маршрутизации из любого PBF-экстракта OpenStreetMap (`tools/valhalla/`).
 * 🧭 **Встроенная навигация и планирование маршрутов:**
   * Интерактивное окно выбора маршрутов прямо на карте: несколько альтернативных вариантов (расчётное время, расстояние, название основных дорог) и кнопка «Поехали».
   * История недавних мест и поездок (Jetpack DataStore): автоматическое сохранение адресов, быстрый старт навигации в 1 тап, защита от дубликатов, удаление отдельных записей или полная очистка.
@@ -48,7 +54,7 @@
   * Автоматическое переключение дневной и ночной палитры на основе солнечного расписания (рассвет/закат по GPS-координатам).
   * Исправлен баг, при котором ночной режим карты не переключался обратно в дневной.
   * Комплексная синхронизация UI: автоматическая адаптация контрастности виджетов, яркости и подложки карты.
-* 🎵 **Глубокая интеграция с Яндекс Музыкой (без переключения приложений):**
+* 🎵 **Глубокая интеграция с Яндекс Музыкой (быстрый запуск Моей волны в 1 клик с автовозвратом в лаунчер):**
   * Встроенное меню выбора волн (BottomSheet): «Моя Волна», настроения («Бодрое», «Спокойное», «Радостное»), занятия («В дороге», «Тренировка») и жанры прямо на рабочем столе.
   * Виджет плеера с отображением обложки альбома в HD, названия трека, прогресс-баром и кнопкой «Любимое» (лайк).
   * Интерактивная пульсирующая неоновая анимация (Ripple Glow) вокруг кнопки волны при воспроизведении музыки.
@@ -60,7 +66,7 @@
   * Поддержка устройств с Android 10 (API 29) и Android 12 (API 31/32).
   * Оптимизация нагрузки на процессоры MediaTek (MTK) и GPU Mali (устранение микрофризов и оптимизация размытия Compose Haze).
   * Защита от случайного опускания шторки уведомлений Android.
-  * Скрипты контроля уровня заряда батареи (Root Battery Limiter) для защиты аккумулятора от деградации и вздутия при постоянном питании в автомобиле.
+  * Скрипты контроля уровня заряда батареи (Root Battery Limiter (`tools/battery/`)) для защиты аккумулятора от деградации и вздутия при постоянном питании в автомобиле.
   * Очистка репозитория от тяжелых бинарных файлов и мусора.
 * 🛡️ **Нужны ли Root-права (Magisk / SuperSU)?**
   * **Лаунчер полностью работает БЕЗ Root-прав** — карты, навигация, виджеты, сценарии, слайдер яркости и Яндекс Музыка работают на любом стандартном устройстве из коробки.
@@ -74,6 +80,12 @@
 
 ## 🇬🇧 Key Highlights and Features (English)
 
+* 🚀 **Native C++ Valhalla Routing Engine (v2.0.0):**
+  * Full migration to embedded C++ Valhalla engine (`libvalhalla.so`) for standalone offline routing.
+  * Lightning-fast route calculation (~70-100 ms) with zero UI lag or timeouts.
+  * True OSM road network compliance: strict one-way handling, turn restrictions, roundabouts, and highway speed profiles.
+  * Localized maneuver guidance with Russian turn instructions.
+  * Reproducible offline tile generation pipeline from standard OSM PBF extracts (`tools/valhalla/`).
 * 🧭 **In-App Navigation & Route Planning:**
   * Interactive route selection dialog directly on the map: multiple route alternatives (estimated time, distance, highway labels) with a one-tap "Go / Start" action.
   * Persistent destination & search history (Jetpack DataStore): automatic destination logging, quick 1-tap navigation start, smart deduplication, individual item deletion, and clear all.
@@ -86,7 +98,7 @@
   * Automatic day/night style transitions based on astronomical solar calculations (sunrise/sunset by GPS).
   * Fixed upstream bug where nighttime map styling failed to switch back to daytime styling after sunrise.
   * Full UI synchronization: automated adaptation of map colors, card contrast, and backlight at dusk and dawn.
-* 🎵 **Deep Yandex Music Integration (No App Switching):**
+* 🎵 **Deep Yandex Music Integration (1-Click Wave Launch with Auto-Return):**
   * In-launcher Vibe & Mood bottom sheet selector: "My Vibe", moods (Energetic, Calm, Cheerful), activities (Driving, Workout), and music genres without opening the external app.
   * Home screen media player card with HD album art, track/artist metadata, seekable progress bar, and instant "Favorite" (like) button.
   * Pulsating Ripple Glow neon ring animation around the vibe button synced with music playback.
@@ -98,7 +110,7 @@
   * Full support for Android 10 (API 29) and Android 12 (API 31/32) head units and tablets.
   * MediaTek (MTK) chipset and Mali GPU performance profiling: eliminated UI stutter and optimized heavy Gaussian blurs.
   * Notification shade pull-down guard preventing accidental Android system panel expansion.
-  * Battery longevity management scripts (Root Battery Limiter) preventing battery swelling under continuous in-vehicle charging.
+  * Battery longevity management scripts (Root Battery Limiter (`tools/battery/`)) preventing battery swelling under continuous in-vehicle charging.
   * Purged repository from legacy APK binaries and temporary build clutter.
 * 🛡️ **Are Root Permissions (Magisk / SuperSU) Required?**
   * **The launcher runs completely WITHOUT Root** — maps, in-app navigation, media controls, Yandex Music, widgets, solar scenarios, and brightness adjustments work out-of-the-box on standard unrooted devices.

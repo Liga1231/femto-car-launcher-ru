@@ -151,8 +151,8 @@ android {
         versionCode =
             versionCodeEnv?.let {
                 it.toIntOrNull() ?: error("VERSION_CODE is set but not a valid integer: \"$it\"")
-            } ?: 1
-        versionName = System.getenv("VERSION_NAME") ?: "1.0"
+            } ?: 20000
+        versionName = System.getenv("VERSION_NAME") ?: "2.0.0-ru"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
