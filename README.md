@@ -7,7 +7,7 @@
 **Автомобильный Android лаунчер с русским интерфейсом, навигацией и Яндекс Музыкой.**  
 *A glanceable in-car Android launcher with full Russian interface, navigation & Yandex Music.*
 
-[![Скачать APK](https://img.shields.io/badge/Скачать_APK-v1.1.0--ru-3B82F6?logo=android&logoColor=white)](https://github.com/Liga1231/femto-car-launcher-ru/releases/latest)
+[![Скачать APK](https://img.shields.io/badge/Скачать_APK-v1.2.0--ru-3B82F6?logo=android&logoColor=white)](https://github.com/Liga1231/femto-car-launcher-ru/releases/latest)
 [![Русский интерфейс](https://img.shields.io/badge/Interface-Русский_%2F_RU-red)](README.md)
 [![Android 10-12+](https://img.shields.io/badge/Android-10_--_12%2B_(API_29%2B)-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Yandex Music Integration](https://img.shields.io/badge/Yandex_Music-Vibes_%26_Flows-yellow?logo=yandexmusic&logoColor=white)](https://music.yandex.ru)
