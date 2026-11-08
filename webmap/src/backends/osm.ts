@@ -54,6 +54,7 @@ declare global {
         // the host will push, so a cold start fetches no hosted style it is
         // about to replace.
         initialStyleUrl(): string;
+        initialCenter?(): string;
     }
 }
 
@@ -108,6 +109,13 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
     const tileHost = bridge?.tileHost() || UPSTREAM_TILE_HOST;
     const terrainUrl = bridge?.terrainTileJsonUrl() || "";
     const initialStyleUrl = bridge?.initialStyleUrl() || DEFAULT_STYLE_URL;
+    const initialCenterStr = bridge?.initialCenter ? bridge.initialCenter() : "";
+    const centerParts = initialCenterStr.split(",").map(Number);
+    const initialCenter: [number, number] =
+        centerParts.length >= 2 && !isNaN(centerParts[0]) && !isNaN(centerParts[1])
+            ? [centerParts[0], centerParts[1]]
+            : [0, 0];
+    const initialZoom = centerParts.length >= 3 && !isNaN(centerParts[2]) ? centerParts[2] : 1;
     if (tileHost !== UPSTREAM_TILE_HOST) log(`tile host: ${tileHost}`);
 
     // Mutable style state in one const holder (let/var are banned — see the
@@ -135,8 +143,8 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
         const liveMap = new MapLibreMap({
             container: "map",
             style: initialStyleUrl,
-            center: [0, 0],
-            zoom: 1,
+            center: initialCenter,
+            zoom: initialZoom,
             attributionControl: false,
             // Every request the upstream origin would receive — tiles, sprites,
             // glyphs, hosted styles, the bundled styles' sources — goes to the

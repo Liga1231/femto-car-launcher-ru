@@ -55,3 +55,11 @@ keystore.properties
 # Map binaries
 *.mbtiles
 *.apk
+*.db
+/offline_navigation_package/
+/apk_backup/
+
+*.idsig
+window_dump.xml
+push_update.ps1
+

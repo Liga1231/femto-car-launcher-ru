@@ -78,6 +78,7 @@ import io.github.seijikohara.femto.R
 import io.github.seijikohara.femto.data.common.hasRecordAudioPermission
 import io.github.seijikohara.femto.data.location.VehicleMotion
 import io.github.seijikohara.femto.data.navigation.AddressSuggestion
+import io.github.seijikohara.femto.data.navigation.OfflineNavigationEngine
 import io.github.seijikohara.femto.data.places.HistoryItem
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.data.places.SavedPlace
@@ -124,6 +125,7 @@ internal fun DestinationPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     isOnline: Boolean = true,
+    canUseOfflineNav: Boolean = false,
     hazeState: HazeState = rememberHazeState(),
     glassConfig: GlassConfig = GlassConfig(),
 ) = MaximizePanel(
@@ -151,22 +153,24 @@ internal fun DestinationPanel(
     // Read off the BoxWithConstraints receiver here: inside the layouts below
     // the outer receiver is out of reach (see CalendarPanel).
     val portrait = maxHeight > maxWidth
+    val isSearchEnabled = isOnline || canUseOfflineNav || OfflineNavigationEngine.isOfflineDataAvailable()
     val entry: @Composable (Modifier) -> Unit = { entryModifier ->
         DestinationEntry(
             uiState = uiState,
             currentPoint = currentPoint,
             currentAddress = currentAddress,
             isOnline = isOnline,
+            canUseOfflineNav = canUseOfflineNav,
             onAction = onAction,
             onMicTap = onMicTap,
             onNavigate = handOff,
             modifier = entryModifier,
         )
     }
-    val showSuggestions = isOnline && uiState.query.trim().isNotEmpty() &&
+    val showSuggestions = isSearchEnabled && uiState.query.trim().isNotEmpty() &&
         (uiState.suggestions.isNotEmpty() || uiState.isSearchingSuggestions)
     val rightPane: @Composable (Modifier) -> Unit = { paneModifier ->
-        if (!isOnline && uiState.query.trim().isNotEmpty()) {
+        if (!isSearchEnabled && uiState.query.trim().isNotEmpty()) {
             OfflineSearchBlocked(modifier = paneModifier)
         } else if (showSuggestions) {
             AddressSuggestions(
@@ -280,6 +284,7 @@ private fun DestinationEntry(
     onMicTap: () -> Unit,
     onNavigate: (target: PlaceTarget, label: String) -> Unit,
     modifier: Modifier = Modifier,
+    canUseOfflineNav: Boolean = false,
 ) {
     var textFieldValue by remember {
         mutableStateOf(TextFieldValue(uiState.query, TextRange(uiState.query.length)))
@@ -294,15 +299,17 @@ private fun DestinationEntry(
         }
     }
 
+    val isSearchEnabled = isOnline || canUseOfflineNav || OfflineNavigationEngine.isOfflineDataAvailable()
+
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
     ) {
-        if (!isOnline) {
+        if (!isSearchEnabled) {
             OfflineWarningBanner()
         }
         val query = textFieldValue.text.trim()
-        val navigate = { if (isOnline && query.isNotEmpty()) onNavigate(PlaceTarget.Query(query), "") }
+        val navigate = { if (isSearchEnabled && query.isNotEmpty()) onNavigate(PlaceTarget.Query(query), "") }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -314,7 +321,7 @@ private fun DestinationEntry(
                     textFieldValue = newValue
                     onAction(DestinationAction.QueryChanged(newValue.text))
                 },
-                enabled = isOnline && uiState.typingAllowed,
+                enabled = isSearchEnabled && uiState.typingAllowed,
                 modifier =
                     Modifier
                         .weight(1f)
@@ -323,7 +330,7 @@ private fun DestinationEntry(
                 textStyle = MaterialTheme.typography.drawerBody(),
                 placeholder = {
                     Text(
-                        text = if (!isOnline) "Поиск заблокирован (нет интернета)" else stringResource(R.string.destination_query_hint),
+                        text = if (!isSearchEnabled) "Поиск заблокирован (нет интернета)" else stringResource(R.string.destination_query_hint),
                         style = MaterialTheme.typography.drawerBody(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -331,9 +338,9 @@ private fun DestinationEntry(
                 },
                 leadingIcon = {
                     FemtoIcon(
-                        imageVector = if (!isOnline) Lucide.NavigationOff else Lucide.Search,
+                        imageVector = if (!isSearchEnabled) Lucide.NavigationOff else Lucide.Search,
                         contentDescription = null,
-                        tint = if (!isOnline) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        tint = if (!isSearchEnabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                     )
                 },
                 trailingIcon = {
@@ -362,7 +369,7 @@ private fun DestinationEntry(
                 MicButton(listening = uiState.voice is VoiceState.Listening, onClick = onMicTap)
             }
         }
-        if (isOnline) {
+        if (isSearchEnabled) {
             QuickStreetSuggestionsBar(
                 query = textFieldValue.text,
                 suggestions = uiState.suggestions,
@@ -376,16 +383,16 @@ private fun DestinationEntry(
         }
         Button(
             onClick = navigate,
-            enabled = isOnline && query.isNotEmpty(),
+            enabled = isSearchEnabled && query.isNotEmpty(),
             modifier = Modifier.fillMaxWidth().heightIn(min = FemtoDimens.MinTouchTarget),
         ) {
             FemtoIcon(
-                imageVector = if (!isOnline) Lucide.NavigationOff else Lucide.Navigation,
+                imageVector = if (!isSearchEnabled) Lucide.NavigationOff else Lucide.Navigation,
                 contentDescription = null,
                 modifier = Modifier.size(FemtoDimens.InlineIconSize),
             )
             Text(
-                text = if (!isOnline) "Требуется интернет" else stringResource(R.string.destination_navigate),
+                text = if (!isSearchEnabled) "Требуется интернет" else stringResource(R.string.destination_navigate),
                 modifier = Modifier.padding(start = ButtonDefaults.IconSpacing),
             )
         }
@@ -395,7 +402,7 @@ private fun DestinationEntry(
         ) {
             FilledTonalButton(
                 onClick = { onAction(DestinationAction.SaveQuery) },
-                enabled = isOnline && uiState.typingAllowed && query.isNotEmpty(),
+                enabled = isSearchEnabled && uiState.typingAllowed && query.isNotEmpty(),
                 modifier = Modifier.weight(1f).heightIn(min = FemtoDimens.MinTouchTarget),
             ) {
                 Text(text = stringResource(R.string.destination_save_query))
@@ -404,7 +411,7 @@ private fun DestinationEntry(
                 onClick = {
                     currentPoint?.let { onAction(DestinationAction.SaveCurrentLocation(it, currentAddress)) }
                 },
-                enabled = isOnline && uiState.typingAllowed && currentPoint != null,
+                enabled = isSearchEnabled && uiState.typingAllowed && currentPoint != null,
                 modifier = Modifier.weight(2f).heightIn(min = FemtoDimens.MinTouchTarget),
             ) {
                 Text(text = stringResource(R.string.destination_save_location))
@@ -923,6 +930,7 @@ internal fun DestinationPanelHost(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     isOnline: Boolean = true,
+    canUseOfflineNav: Boolean = false,
     hazeState: HazeState = rememberHazeState(),
     glassConfig: GlassConfig = GlassConfig(),
 ) {
@@ -938,6 +946,7 @@ internal fun DestinationPanelHost(
         currentPoint = currentPoint,
         currentAddress = currentAddress,
         isOnline = isOnline,
+        canUseOfflineNav = canUseOfflineNav,
         onAction = viewModel::onAction,
         onMicTap = {
             when {

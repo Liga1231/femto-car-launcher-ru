@@ -1,7 +1,15 @@
 package io.github.seijikohara.femto.ui.home.components
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.location.Location
+import android.net.Uri
 import android.os.SystemClock
+import android.provider.Settings
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -73,34 +81,53 @@ internal fun MapPanel(
     mapSurface: (@Composable (Location, MapConfig) -> Unit)? = null,
     navigationRouteGeoJson: String? = null,
     onSelectRoute: ((Int) -> Unit)? = null,
-) = Surface(
-    modifier = modifier,
-    // Full-bleed: the map fills the dashboard to the screen edges, so it keeps
-    // square corners rather than the rounded card shape the floating overlays use.
-    shape = RectangleShape,
-    color = MaterialTheme.colorScheme.surfaceContainer,
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        // A location fix is the only gate: with it we have permission and a
-        // centre point; without it the map has nothing to show, so fall back.
-        if (location != null) {
-            mapSurface?.invoke(location, mapConfig) ?: WebMapView(
-                location = location,
-                mapConfig = mapConfig,
-                onTap = onTap,
-                modifier = Modifier.fillMaxSize(),
-                recenterNonce = recenterNonce,
-                online = online,
-                onFollowChange = onFollowChange,
-                onBearingChange = onBearingChange,
-                onOpenLicenses = onOpenLicenses,
-                attributionBottomInset = attributionBottomInset,
-                navigationRouteGeoJson = navigationRouteGeoJson,
-                onSelectRoute = onSelectRoute,
-            )
-        } else {
-            ExposedMapRegion(mapConfig = mapConfig) {
-                Fallback()
+    val context = LocalContext.current
+    val hasPermission = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_FINE_LOCATION,
+    ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+    ) == PackageManager.PERMISSION_GRANTED
+
+    val fallbackLocation = remember {
+        Location("fallback").apply {
+            latitude = 54.7350
+            longitude = 55.9580
+            time = System.currentTimeMillis()
+            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        }
+    }
+    val effectiveLocation = if (hasPermission) (location ?: fallbackLocation) else location
+
+    Surface(
+        modifier = modifier,
+        // Full-bleed: the map fills the dashboard to the screen edges, so it keeps
+        // square corners rather than the rounded card shape the floating overlays use.
+        shape = RectangleShape,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (effectiveLocation != null) {
+                mapSurface?.invoke(effectiveLocation, mapConfig) ?: WebMapView(
+                    location = effectiveLocation,
+                    mapConfig = mapConfig,
+                    onTap = onTap,
+                    modifier = Modifier.fillMaxSize(),
+                    recenterNonce = recenterNonce,
+                    online = online,
+                    onFollowChange = onFollowChange,
+                    onBearingChange = onBearingChange,
+                    onOpenLicenses = onOpenLicenses,
+                    attributionBottomInset = attributionBottomInset,
+                    navigationRouteGeoJson = navigationRouteGeoJson,
+                    onSelectRoute = onSelectRoute,
+                )
+            } else {
+                ExposedMapRegion(mapConfig = mapConfig) {
+                    Fallback()
+                }
             }
         }
     }
@@ -247,9 +274,21 @@ internal fun rememberLocationFresh(location: Location): Boolean =
     }.value
 
 @Composable
-internal fun Fallback(modifier: Modifier = Modifier) =
+internal fun Fallback(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     Column(
-        modifier = modifier.fillMaxSize().padding(32.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .clickable {
+                runCatching {
+                    val intent = Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", context.packageName, null),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                }
+            }
+            .padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -274,3 +313,4 @@ internal fun Fallback(modifier: Modifier = Modifier) =
             modifier = Modifier.padding(top = 4.dp),
         )
     }
+}

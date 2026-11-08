@@ -266,6 +266,7 @@ internal fun DashboardDock(
     motionTier: MotionTier = MotionTier.STANDARD,
     updateBadge: Boolean = false,
     onDockWidthChanged: (Int) -> Unit = {},
+    canUseOfflineNav: Boolean = false,
 ) = when (position) {
     DockPosition.BOTTOM, DockPosition.TOP -> {
         HorizontalDock(
@@ -279,6 +280,7 @@ internal fun DashboardDock(
             motionTier = motionTier,
             updateBadge = updateBadge,
             onDockWidthChanged = onDockWidthChanged,
+            canUseOfflineNav = canUseOfflineNav,
         )
     }
 
@@ -292,6 +294,7 @@ internal fun DashboardDock(
             dockConfig = dockConfig,
             motionTier = motionTier,
             updateBadge = updateBadge,
+            canUseOfflineNav = canUseOfflineNav,
         )
     }
 }
@@ -308,6 +311,7 @@ private fun HorizontalDock(
     motionTier: MotionTier = MotionTier.STANDARD,
     updateBadge: Boolean = false,
     onDockWidthChanged: (Int) -> Unit = {},
+    canUseOfflineNav: Boolean = false,
 ) {
     val visibleNav = dockConfig.visibleNav
     // Read the available width before committing to a layout. The fixed-margin
@@ -387,7 +391,6 @@ private fun HorizontalDock(
                                 onEnterEdit = { editing = true },
                                 modifier = Modifier.padding(horizontal = FemtoDimens.DockButtonMargin),
                                 updateBadge = updateBadge,
-                                isOnline = systemStatus.isOnline,
                             )
                         }
                     }
@@ -442,7 +445,6 @@ private fun HorizontalDock(
                                         onEnterEdit = { editing = true },
                                         modifier = Modifier.weight(1f),
                                         updateBadge = updateBadge,
-                                        isOnline = systemStatus.isOnline,
                                     )
                                 }
                             }
@@ -493,6 +495,7 @@ private fun VerticalDock(
     dockConfig: DockConfig = DockConfig(),
     motionTier: MotionTier = MotionTier.STANDARD,
     updateBadge: Boolean = false,
+    canUseOfflineNav: Boolean = false,
 ) = Surface(
     // Floating rounded glass rail, mirroring HorizontalDock on the width; on the
     // Live backend the blur falls back to the tint.
@@ -573,7 +576,6 @@ private fun VerticalDock(
                                     onEnterEdit = { editing = true },
                                     modifier = Modifier.weight(1f),
                                     updateBadge = updateBadge,
-                                    isOnline = systemStatus.isOnline,
                                 )
                             }
                         }
@@ -675,31 +677,13 @@ private fun EditableNavButton(
     onEnterEdit: () -> Unit,
     modifier: Modifier = Modifier,
     updateBadge: Boolean = false,
-    isOnline: Boolean = true,
 ) {
     val spec = navSpecFor(id)
-    val isNav = id == DockNavId.NAVIGATION
-    val isBlocked = isNav && !isOnline
-    val context = LocalContext.current
-
-    val icon = if (isBlocked) Lucide.NavigationOff else spec.icon
-    val description = if (isBlocked) {
-        "Навигация (нет интернета)"
-    } else {
-        stringResource(spec.labelRes)
-    }
-
     NavButton(
-        icon = icon,
-        description = description,
-        onClick = {
-            if (isBlocked) {
-                Toast.makeText(context, "Навигатор работает только с интернетом", Toast.LENGTH_SHORT).show()
-            } else {
-                onAction(spec.action)
-            }
-        },
-        modifier = modifier.then(if (isBlocked) Modifier.alpha(0.38f) else Modifier),
+        icon = spec.icon,
+        description = stringResource(spec.labelRes),
+        onClick = { onAction(spec.action) },
+        modifier = modifier,
         onLongClickLabel = stringResource(R.string.dock_edit),
         onLongClick = onEnterEdit,
         // The update is offered in Settings (its Updates section), so the dot

@@ -12,6 +12,8 @@ import io.github.seijikohara.femto.data.location.LocationGraph
 import io.github.seijikohara.femto.data.location.VehicleMotion
 import io.github.seijikohara.femto.data.navigation.AddressSuggestion
 import io.github.seijikohara.femto.data.navigation.DestinationGeocoder
+import io.github.seijikohara.femto.data.navigation.NetworkMonitor
+import io.github.seijikohara.femto.data.navigation.OfflineNavigationEngine
 import io.github.seijikohara.femto.data.places.HistoryItem
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.data.places.SavedPlacesPreferences
@@ -118,11 +120,11 @@ internal class DestinationViewModel(
         viewModelScope.launch {
             @OptIn(FlowPreview::class)
             query
-                .debounce(1000)
+                .debounce(400)
                 .distinctUntilChanged()
                 .collectLatest { text ->
                     val trimmed = text.trim()
-                    if (trimmed.length < 3 || destinationGeocoder == null) {
+                    if (trimmed.length < 2 || destinationGeocoder == null) {
                         suggestions.value = emptyList()
                         isSearchingSuggestions.value = false
                     } else {

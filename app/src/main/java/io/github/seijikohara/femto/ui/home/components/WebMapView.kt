@@ -647,6 +647,14 @@ internal fun WebMapView(
                                 tileHostAt(tileHosts, tileHostRotation.intValue)
                             }
 
+                        @JavascriptInterface
+                        fun initialCenter(): String =
+                            if (offlineTileProvider.isAvailable()) {
+                                "${offlineTileProvider.center[0]},${offlineTileProvider.center[1]},${if (offlineTileProvider.center.size > 2) offlineTileProvider.center[2] else 10.0}"
+                            } else {
+                                "0,0,1"
+                            }
+
                         // The raster-DEM TileJSON the page injects while the Terrain
                         // switch is on; a build-time endpoint (MAP_TERRAIN_TILEJSON_URL).
                         @JavascriptInterface
@@ -979,7 +987,35 @@ internal class LiveMapWebViewClient(
     private val onPageLoaded: () -> Unit,
     private val onRendererDeath: (view: WebView, crashed: Boolean) -> Unit,
 ) : WebViewClientCompat() {
-    private val onlineTileCache = object : LruCache<String, ByteArray>(128) {}
+    private val onlineTileCache = object : LruCache<String, ByteArray>(512) {}
+    @Volatile
+    private var onlineTileUrlTemplate: String = "https://tiles.openfreemap.org/planet/20261101_080013_pt/{z}/{x}/{y}.pbf"
+
+    init {
+        Thread {
+            try {
+                val url = java.net.URL("https://tiles.openfreemap.org/planet")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
+                if (conn.responseCode == 200) {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(body)
+                    val tilesArr = json.optJSONArray("tiles")
+                    if (tilesArr != null && tilesArr.length() > 0) {
+                        val first = tilesArr.getString(0)
+                        if (first.isNotBlank() && first.contains("{z}")) {
+                            onlineTileUrlTemplate = first
+                            Log.i(TAG, "Resolved OpenFreeMap live online tile template: $first")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Using default online tile template, live probe: ${e.message}")
+            }
+        }.start()
+    }
 
     // A tap on an attribution link (MapLibre's control under a custom style,
     // or Google's in-page credits) must not navigate this WebView off the map
@@ -1017,6 +1053,7 @@ internal class LiveMapWebViewClient(
                     conn.connectTimeout = 3000
                     conn.readTimeout = 3000
                     conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
                     if (conn.responseCode == 200) {
                         return WebResourceResponse(
                             "application/json",
@@ -1087,8 +1124,79 @@ internal class LiveMapWebViewClient(
                             mapOf("Access-Control-Allow-Origin" to "*"),
                             stream,
                         )
+                    } catch (_: Exception) {
+                        if (isOnline()) {
+                            try {
+                                val subPath = if (path.contains("/fonts/")) path.substring(path.indexOf("/fonts/")) else path
+                                val url = java.net.URL("https://tiles.openfreemap.org$subPath")
+                                val conn = url.openConnection() as java.net.HttpURLConnection
+                                conn.connectTimeout = 2000
+                                conn.readTimeout = 2000
+                                conn.requestMethod = "GET"
+                                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
+                                if (conn.responseCode == 200) {
+                                    return WebResourceResponse(
+                                        "application/x-protobuf",
+                                        null,
+                                        200,
+                                        "OK",
+                                        mapOf("Access-Control-Allow-Origin" to "*"),
+                                        conn.inputStream,
+                                    )
+                                }
+                            } catch (_: Exception) {}
+                        }
+                        return WebResourceResponse(
+                            "application/x-protobuf",
+                            null,
+                            204,
+                            "No Content",
+                            mapOf("Access-Control-Allow-Origin" to "*"),
+                            null,
+                        )
+                    }
+                }
+            }
+
+            if (path.contains("/natural_earth/") || (path.endsWith(".png") && !path.contains("/sprites/"))) {
+                if (isOnline()) {
+                    try {
+                        val subPath = if (path.contains("/natural_earth/")) path.substring(path.indexOf("/natural_earth/")) else path
+                        val url = java.net.URL("https://tiles.openfreemap.org$subPath")
+                        val conn = url.openConnection() as java.net.HttpURLConnection
+                        conn.connectTimeout = 2000
+                        conn.readTimeout = 2000
+                        conn.requestMethod = "GET"
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
+                        if (conn.responseCode == 200) {
+                            return WebResourceResponse(
+                                "image/png",
+                                null,
+                                200,
+                                "OK",
+                                mapOf("Access-Control-Allow-Origin" to "*"),
+                                conn.inputStream,
+                            )
+                        }
                     } catch (_: Exception) {}
                 }
+                val transparentPng = byteArrayOf(
+                        0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte(),
+                        0x00, 0x00, 0x00, 0x0D, 0x49.toByte(), 0x48.toByte(), 0x44.toByte(), 0x52.toByte(),
+                        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4.toByte(), 0x89.toByte(),
+                        0x00, 0x00, 0x00, 0x0A, 0x49.toByte(), 0x44.toByte(), 0x41.toByte(), 0x54.toByte(),
+                        0x78.toByte(), 0x9C.toByte(), 0x63.toByte(), 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D.toByte(), 0xB4.toByte(),
+                        0x00, 0x00, 0x00, 0x00, 0x49.toByte(), 0x45.toByte(), 0x4E.toByte(), 0x44.toByte(),
+                        0xAE.toByte(), 0x42.toByte(), 0x60.toByte(), 0x82.toByte(),
+                    )
+                    return WebResourceResponse(
+                        "image/png",
+                        null,
+                        200,
+                        "OK",
+                        mapOf("Access-Control-Allow-Origin" to "*"),
+                        transparentPng.inputStream(),
+                    )
             }
 
             if (path.contains("/sprites/")) {
@@ -1127,14 +1235,10 @@ internal class LiveMapWebViewClient(
                 val (z, x, y) = tileMatch.destructured
                 val pbf = offlineTileProvider.getTile(z.toInt(), x.toInt(), y.toInt())
                 if (pbf != null && pbf.isNotEmpty()) {
-                    val isGzip = pbf.size >= 2 && pbf[0] == 0x1f.toByte() && pbf[1] == 0x8b.toByte()
-                    val headers = mutableMapOf(
+                    val headers = mapOf(
                         "Content-Type" to "application/x-protobuf",
                         "Access-Control-Allow-Origin" to "*",
                     )
-                    if (isGzip) {
-                        headers["Content-Encoding"] = "gzip"
-                    }
                     return WebResourceResponse("application/x-protobuf", null, 200, "OK", headers, pbf.inputStream())
                 } else if (isOnline()) {
                     val tileKey = "$z/$x/$y"
@@ -1153,22 +1257,35 @@ internal class LiveMapWebViewClient(
                         )
                     }
                     try {
-                        val url = java.net.URL("https://tiles.openfreemap.org/tiles/$z/$x/$y.pbf")
+                        val template = onlineTileUrlTemplate
+                        val targetUrl = template
+                            .replace("{z}", z)
+                            .replace("{x}", x)
+                            .replace("{y}", y)
+                        val url = java.net.URL(targetUrl)
                         val conn = url.openConnection() as java.net.HttpURLConnection
                         conn.connectTimeout = 3000
                         conn.readTimeout = 3000
                         conn.requestMethod = "GET"
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
+                        conn.setRequestProperty("Accept", "*/*")
                         if (conn.responseCode == 200) {
-                            val bytes = conn.inputStream.use { it.readBytes() }
+                            val rawBytes = conn.inputStream.use { it.readBytes() }
+                            val isGz = (rawBytes.size >= 2 && rawBytes[0] == 0x1f.toByte() && rawBytes[1] == 0x8b.toByte()) || conn.contentEncoding?.contains("gzip", ignoreCase = true) == true
+                            val bytes = if (isGz) {
+                                try {
+                                    java.util.zip.GZIPInputStream(rawBytes.inputStream()).use { it.readBytes() }
+                                } catch (_: Exception) {
+                                    rawBytes
+                                }
+                            } else {
+                                rawBytes
+                            }
                             onlineTileCache.put(tileKey, bytes)
-                            val encoding = conn.contentEncoding
-                            val headers = mutableMapOf(
+                            val headers = mapOf(
                                 "Content-Type" to "application/x-protobuf",
                                 "Access-Control-Allow-Origin" to "*",
                             )
-                            if (!encoding.isNullOrBlank()) {
-                                headers["Content-Encoding"] = encoding
-                            }
                             return WebResourceResponse("application/x-protobuf", null, 200, "OK", headers, bytes.inputStream())
                         }
                     } catch (_: Exception) {}

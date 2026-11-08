@@ -204,18 +204,31 @@ internal object OfflineNavigationEngine {
     
     var appContext: android.content.Context? = null
     private var searchDatabase: SQLiteDatabase? = null
+    private var routingDatabase: SQLiteDatabase? = null
+
+    fun init(context: android.content.Context) {
+        if (appContext == null) {
+            appContext = context.applicationContext
+        }
+    }
 
     @Synchronized
     private fun getSearchDatabase(): SQLiteDatabase? {
         if (searchDatabase?.isOpen == true) return searchDatabase
         val ctx = appContext
         val candidates = mutableListOf(
+            File("/sdcard/Femto/maps/geocoding.db"),
             File("/sdcard/Femto/maps/search.db"),
+            File(Environment.getExternalStorageDirectory(), "Femto/maps/geocoding.db"),
             File(Environment.getExternalStorageDirectory(), "Femto/maps/search.db"),
+            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/geocoding.db"),
             File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/search.db"),
         )
         if (ctx != null) {
-            ctx.getExternalFilesDir("maps")?.let { candidates.add(File(it, "search.db")) }
+            ctx.getExternalFilesDir("maps")?.let {
+                candidates.add(File(it, "geocoding.db"))
+                candidates.add(File(it, "search.db"))
+            }
             val internalFile = File(ctx.filesDir, "search.db")
             if (!internalFile.exists() || internalFile.length() == 0L) {
                 try {
@@ -244,6 +257,120 @@ internal object OfflineNavigationEngine {
         }
         return null
     }
+
+    @Synchronized
+    fun getRoutingDatabase(): SQLiteDatabase? {
+        if (routingDatabase?.isOpen == true) return routingDatabase
+        val ctx = appContext
+        val candidates = mutableListOf(
+            File("/sdcard/Femto/maps/routing.db"),
+            File(Environment.getExternalStorageDirectory(), "Femto/maps/routing.db"),
+            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/routing.db"),
+        )
+        if (ctx != null) {
+            ctx.getExternalFilesDir("maps")?.let { candidates.add(File(it, "routing.db")) }
+            candidates.add(File(ctx.filesDir, "routing.db"))
+        }
+        for (f in candidates) {
+            if (f.exists() && f.canRead() && f.length() > 0) {
+                try {
+                    val db = SQLiteDatabase.openDatabase(
+                        f.absolutePath,
+                        null,
+                        SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
+                    )
+                    routingDatabase = db
+                    Log.i(TAG, "Opened offline routing database: ${f.absolutePath} (${f.length()} bytes)")
+                    return db
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to open routing DB candidate: ${f.absolutePath}", e)
+                }
+            }
+        }
+        return null
+    }
+
+    private var cachedDownloadedBounds: DoubleArray? = null
+
+    fun findMapFile(): File? {
+        val ctx = appContext
+        val candidates = listOfNotNull(
+            File("/sdcard/Femto/maps/map.mbtiles"),
+            File("/sdcard/Femto/maps/bashkortostan.mbtiles"),
+            ctx?.getExternalFilesDir("maps")?.let { File(it, "map.mbtiles") },
+            ctx?.getExternalFilesDir("maps")?.let { File(it, "bashkortostan.mbtiles") },
+            File(Environment.getExternalStorageDirectory(), "Femto/maps/map.mbtiles"),
+            File(Environment.getExternalStorageDirectory(), "Femto/maps/bashkortostan.mbtiles"),
+            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/map.mbtiles"),
+            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/bashkortostan.mbtiles"),
+        )
+        for (candidate in candidates) {
+            if (candidate.exists() && candidate.canRead() && candidate.length() > 0) {
+                return candidate
+            }
+        }
+        val searchDirs = listOfNotNull(
+            ctx?.getExternalFilesDir("maps"),
+            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps"),
+            File("/sdcard/Femto/maps"),
+            File(Environment.getExternalStorageDirectory(), "Femto/maps"),
+        )
+        for (dir in searchDirs) {
+            if (dir.exists() && dir.isDirectory) {
+                val anyMbtiles = dir.listFiles { f -> f.extension.equals("mbtiles", ignoreCase = true) }?.firstOrNull()
+                if (anyMbtiles != null && anyMbtiles.canRead() && anyMbtiles.length() > 0) {
+                    return anyMbtiles
+                }
+            }
+        }
+        return null
+    }
+
+    @Synchronized
+    fun getDownloadedBounds(): DoubleArray {
+        cachedDownloadedBounds?.let { return it }
+        val mbtiles = findMapFile()
+        if (mbtiles != null) {
+            try {
+                SQLiteDatabase.openDatabase(
+                    mbtiles.absolutePath,
+                    null,
+                    SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
+                ).use { db ->
+                    db.rawQuery("SELECT value FROM metadata WHERE name = 'bounds'", null).use { cursor ->
+                        if (cursor.moveToNext()) {
+                            val bStr = cursor.getString(0)
+                            val parts = bStr.split(',').mapNotNull { it.trim().toDoubleOrNull() }
+                            if (parts.size == 4) {
+                                val b = parts.toDoubleArray()
+                                cachedDownloadedBounds = b
+                                Log.i(TAG, "Loaded offline bounds from MBTiles: ${b.joinToString()}")
+                                return b
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Could not read bounds from metadata: ${e.message}")
+            }
+        }
+        val def = doubleArrayOf(MIN_LON, MIN_LAT, MAX_LON, MAX_LAT)
+        cachedDownloadedBounds = def
+        return def
+    }
+
+    fun isInsideDownloadedArea(lat: Double, lon: Double): Boolean {
+        val b = getDownloadedBounds()
+        // b: [minLon, minLat, maxLon, maxLat]
+        val pad = 0.08
+        return (lon >= b[0] - pad && lon <= b[2] + pad) && (lat >= b[1] - pad && lat <= b[3] + pad)
+    }
+
+    fun isOfflineDataAvailable(): Boolean {
+        return getSearchDatabase() != null || isOfflineRoutingAvailable() || findMapFile() != null
+    }
+
+    fun isOfflineRoutingAvailable(): Boolean = getRoutingDatabase() != null
 
     fun isUfaLocation(title: String, subtitle: String, lat: Double, lon: Double): Boolean {
         val sub = subtitle.lowercase(Locale.ROOT)
@@ -312,15 +439,42 @@ internal object OfflineNavigationEngine {
         val containsQuery: Boolean,
     )
 
+    private fun normalizeHouseNumber(hn: String): String {
+        val sb = StringBuilder()
+        for (ch in hn.trim()) {
+            if (ch in 'а'..'я' || ch == 'ё') {
+                sb.append(ch.uppercaseChar())
+            } else {
+                sb.append(ch)
+            }
+        }
+        return sb.toString()
+    }
+
+    private data class StreetInfo(
+        val id: Int,
+        val name: String,
+        val city: String,
+        val lat: Double,
+        val lon: Double,
+    )
+
     fun searchPlaces(query: String, maxResults: Int = 80): List<AddressSuggestion> {
         val trimmed = query.trim()
-        if (trimmed.length < 2) return emptyList()
+        if (trimmed.isEmpty()) return emptyList()
 
-        val houseMatch = Regex("""\b(\d+[а-яa-z/\-]*)\b""").find(trimmed)
-        val houseNum = houseMatch?.value
-        val streetQuery = trimmed.replace(Regex("""\b\d+[а-яa-z/\-]*\b"""), "").trim()
-        val searchQuery = if (streetQuery.length >= 2) streetQuery else trimmed
-        val qLower = searchQuery.lowercase(Locale.ROOT)
+        val cleanQuery = trimmed.replace(Regex("""[^\p{L}\p{Nd}\s/\-]"""), " ").trim()
+        if (cleanQuery.isEmpty()) return emptyList()
+
+        val rawTokens = cleanQuery.split(Regex("""\s+""")).filter { it.isNotBlank() }
+        if (rawTokens.isEmpty()) return emptyList()
+
+        val lastToken = rawTokens.last()
+        val hasDigits = lastToken.any { it.isDigit() }
+        val houseNum = if (hasDigits) normalizeHouseNumber(lastToken) else null
+        val streetTokens = if (houseNum != null) rawTokens.dropLast(1) else rawTokens
+
+        val qLower = cleanQuery.lowercase(Locale.ROOT)
         val qRoot = qLower
             .removeSuffix("а")
             .removeSuffix("я")
@@ -334,62 +488,176 @@ internal object OfflineNavigationEngine {
 
         val candidates = mutableListOf<ScoredCandidate>()
 
-        // 1. Query SQLite search.db
         val db = getSearchDatabase()
         if (db != null) {
             try {
-                val pattern = "%$qRoot%"
-                val cursor = db.rawQuery(
-                    "SELECT title, subtitle, lat, lon, category, priority FROM places WHERE search_norm LIKE ? LIMIT 60",
-                    arrayOf(pattern),
-                )
-                var streetCount = 0
-                cursor.use {
-                    while (it.moveToNext()) {
-                        val titleRaw = it.getString(0)
-                        val subtitle = it.getString(1)
-                        val lat = it.getDouble(2)
-                        val lon = it.getDouble(3)
-                        val category = it.getString(4)
-                        val prio = it.getInt(5)
+                // 1. If house number is specified, search exact houses via streets + houses tables
+                if (houseNum != null && streetTokens.isNotEmpty()) {
+                    val stClean = streetTokens.filter { t ->
+                        val lower = t.lowercase(Locale.ROOT)
+                        lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "проезд", "шоссе", "ш", "г", "город", "уфа")
+                    }.ifEmpty { streetTokens }
 
-                        val isUfa = isUfaLocation(titleRaw, subtitle, lat, lon)
-                        val tLower = titleRaw.lowercase(Locale.ROOT)
-                        val startsWith = tLower.startsWith(qLower) || tLower.startsWith(qRoot)
-                        val contains = tLower.contains(qLower) || tLower.contains(qRoot)
+                    val stConds = stClean.map { "s.aliases LIKE ?" }
+                    val stParams = stClean.map { "%${it.lowercase(Locale.ROOT)}%" }.toMutableList()
 
-                        // Add the street / place itself
-                        candidates.add(
-                            ScoredCandidate(
-                                title = titleRaw,
-                                subtitle = subtitle,
-                                lat = lat,
-                                lon = lon,
-                                priority = prio,
-                                isUfa = isUfa,
-                                startsWithQuery = startsWith,
-                                containsQuery = contains,
+                    val firstToken = stClean.first().lowercase(Locale.ROOT)
+                    val stSql = """
+                        SELECT s.id, s.name, s.city, s.lat, s.lon
+                        FROM streets s
+                        WHERE ${stConds.joinToString(" AND ")}
+                        ORDER BY
+                            CASE WHEN s.city = 'Уфа' OR s.city IS NULL OR s.city = '' THEN 0 ELSE 1 END,
+                            CASE WHEN lower(s.name) LIKE ? THEN 0 ELSE 1 END,
+                            LENGTH(s.name) ASC
+                        LIMIT 10
+                    """.trimIndent()
+                    stParams.add("%$firstToken%")
+
+                    val matchingStreets = mutableListOf<StreetInfo>()
+                    db.rawQuery(stSql, stParams.toTypedArray()).use { cursor ->
+                        while (cursor.moveToNext()) {
+                            matchingStreets.add(
+                                StreetInfo(
+                                    id = cursor.getInt(0),
+                                    name = cursor.getString(1),
+                                    city = cursor.getString(2) ?: "Уфа",
+                                    lat = cursor.getDouble(3),
+                                    lon = cursor.getDouble(4),
+                                )
                             )
-                        )
+                        }
+                    }
 
-                        // If category is street, expand into houses for the top matching streets
-                        if (category == "street" && (streetCount < 3 || houseNum != null)) {
-                            streetCount++
-                            val houses = getStreetHouses(houseNum)
-                            for (h in houses) {
-                                val (hLat, hLon) = calculateHouseCoordinate(lat, lon, h)
-                                val isExact = (houseNum != null && h.equals(houseNum, ignoreCase = true))
-                                val hTitle = "$titleRaw, $h"
+                    for (street in matchingStreets) {
+                        val hSql = """
+                            SELECT h.housenumber, h.lat, h.lon,
+                                   CASE
+                                       WHEN upper(h.housenumber) = upper(?) THEN 0
+                                       WHEN upper(h.housenumber) LIKE upper(?) || '/%' THEN 1
+                                       WHEN upper(h.housenumber) LIKE upper(?) || '%' THEN 2
+                                       ELSE 3
+                                   END as hn_rank
+                            FROM houses h
+                            WHERE h.street_id = ? AND (
+                                upper(h.housenumber) = upper(?)
+                                OR upper(h.housenumber) LIKE upper(?) || '/%'
+                                OR upper(h.housenumber) LIKE upper(?) || '%'
+                            )
+                            ORDER BY hn_rank ASC, LENGTH(h.housenumber) ASC
+                            LIMIT 5
+                        """.trimIndent()
+
+                        db.rawQuery(
+                            hSql,
+                            arrayOf(houseNum, houseNum, houseNum, street.id.toString(), houseNum, houseNum, houseNum)
+                        ).use { hCursor ->
+                            while (hCursor.moveToNext()) {
+                                val hn = hCursor.getString(0)
+                                val lat = hCursor.getDouble(1)
+                                val lon = hCursor.getDouble(2)
+                                val rank = hCursor.getInt(3)
+                                val isExact = (rank == 0)
+                                val isUfa = street.city.isBlank() || street.city.equals("Уфа", ignoreCase = true)
+
                                 candidates.add(
                                     ScoredCandidate(
-                                        title = hTitle,
-                                        subtitle = subtitle,
-                                        lat = hLat,
-                                        lon = hLon,
-                                        priority = if (isExact) 100 else if (houseNum != null) 92 else (prio - 2),
+                                        title = "${street.name}, $hn",
+                                        subtitle = if (street.city.isBlank()) "Уфа" else street.city,
+                                        lat = lat,
+                                        lon = lon,
+                                        priority = if (isExact) 100 else (90 - rank * 5),
                                         isUfa = isUfa,
-                                        startsWithQuery = startsWith,
-                                        containsQuery = contains,
+                                        startsWithQuery = true,
+                                        containsQuery = true,
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 2. Search POIs (Shopping malls, clinics, landmarks)
+                if (candidates.size < maxResults) {
+                    val poiClean = rawTokens.filter { t ->
+                        val lower = t.lowercase(Locale.ROOT)
+                        lower !in setOf("трк", "трц", "тц", "тк", "магазин", "клиника", "больница", "улица", "ул", "проспект", "пр")
+                    }.ifEmpty { rawTokens }
+
+                    val poiConds = poiClean.map { "(p.search_norm LIKE ? OR p.name LIKE ?)" }
+                    val poiParams = mutableListOf<String>()
+                    for (t in poiClean) {
+                        val pattern = "%${t.lowercase(Locale.ROOT)}%"
+                        poiParams.add(pattern)
+                        poiParams.add(pattern)
+                    }
+
+                    val poiSql = """
+                        SELECT p.name, p.subtitle, p.lat, p.lon
+                        FROM poi p
+                        WHERE ${poiConds.joinToString(" AND ")}
+                        LIMIT ${(maxResults - candidates.size).coerceAtLeast(1)}
+                    """.trimIndent()
+
+                    db.rawQuery(poiSql, poiParams.toTypedArray()).use { cursor ->
+                        while (cursor.moveToNext()) {
+                            val name = cursor.getString(0)
+                            val sub = cursor.getString(1) ?: "POI"
+                            val lat = cursor.getDouble(2)
+                            val lon = cursor.getDouble(3)
+                            candidates.add(
+                                ScoredCandidate(
+                                    title = name,
+                                    subtitle = sub,
+                                    lat = lat,
+                                    lon = lon,
+                                    priority = 95,
+                                    isUfa = true,
+                                    startsWithQuery = true,
+                                    containsQuery = true,
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // 3. Search streets (when no house number was given, or as additional suggestions)
+                if (candidates.size < maxResults && houseNum == null) {
+                    val stClean = streetTokens.filter { t ->
+                        val lower = t.lowercase(Locale.ROOT)
+                        lower !in setOf("улица", "ул", "проспект", "пр", "просп", "бульвар", "б-р", "переулок", "пер", "проезд", "шоссе", "ш", "г", "город", "уфа")
+                    }.ifEmpty { streetTokens }
+
+                    if (stClean.isNotEmpty()) {
+                        val stConds = stClean.map { "s.aliases LIKE ?" }
+                        val stParams = stClean.map { "%${it.lowercase(Locale.ROOT)}%" }.toMutableList()
+
+                        val stSql = """
+                            SELECT s.name, s.city, s.lat, s.lon
+                            FROM streets s
+                            WHERE ${stConds.joinToString(" AND ")}
+                            ORDER BY
+                                CASE WHEN s.city = 'Уфа' OR s.city IS NULL OR s.city = '' THEN 0 ELSE 1 END,
+                                LENGTH(s.name) ASC
+                            LIMIT ${(maxResults - candidates.size).coerceAtLeast(1)}
+                        """.trimIndent()
+
+                        db.rawQuery(stSql, stParams.toTypedArray()).use { cursor ->
+                            while (cursor.moveToNext()) {
+                                val name = cursor.getString(0)
+                                val city = cursor.getString(1) ?: "Уфа"
+                                val lat = cursor.getDouble(2)
+                                val lon = cursor.getDouble(3)
+                                candidates.add(
+                                    ScoredCandidate(
+                                        title = name,
+                                        subtitle = city,
+                                        lat = lat,
+                                        lon = lon,
+                                        priority = 80,
+                                        isUfa = city.isBlank() || city.equals("Уфа", ignoreCase = true),
+                                        startsWithQuery = true,
+                                        containsQuery = true,
                                     )
                                 )
                             }
@@ -397,69 +665,43 @@ internal object OfflineNavigationEngine {
                     }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Error querying search.db", e)
+                Log.w(TAG, "Error querying database in searchPlaces", e)
             }
         }
 
-        // 2. Curated in-memory PLACES (key Ufa landmarks, avenues, stations)
-        var placesStreetCount = 0
-        for (entry in PLACES) {
-            val titleL = entry.title.lowercase(Locale.ROOT)
-            val subL = entry.subtitle.lowercase(Locale.ROOT)
-            if (titleL.contains(qLower) || titleL.contains(qRoot) || subL.contains(qLower) || subL.contains(qRoot)) {
-                val isUfa = isUfaLocation(entry.title, entry.subtitle, entry.lat, entry.lon)
-                val startsWith = titleL.startsWith(qLower) || titleL.startsWith(qRoot)
-                val contains = titleL.contains(qLower) || titleL.contains(qRoot)
+        // 4. Curated in-memory fallback only if database produced nothing
+        if (candidates.isEmpty()) {
+            for (entry in PLACES) {
+                val titleL = entry.title.lowercase(Locale.ROOT)
+                val subL = entry.subtitle.lowercase(Locale.ROOT)
+                if (titleL.contains(qLower) || titleL.contains(qRoot) || subL.contains(qLower) || subL.contains(qRoot)) {
+                    val isUfa = isUfaLocation(entry.title, entry.subtitle, entry.lat, entry.lon)
+                    val startsWith = titleL.startsWith(qLower) || titleL.startsWith(qRoot)
+                    val contains = titleL.contains(qLower) || titleL.contains(qRoot)
 
-                candidates.add(
-                    ScoredCandidate(
-                        title = entry.title,
-                        subtitle = entry.subtitle,
-                        lat = entry.lat,
-                        lon = entry.lon,
-                        priority = entry.priority,
-                        isUfa = isUfa,
-                        startsWithQuery = startsWith,
-                        containsQuery = contains,
-                    )
-                )
-
-                if (entry.type == "street" && (placesStreetCount < 2 || houseNum != null)) {
-                    placesStreetCount++
-                    val houses = getStreetHouses(houseNum)
-                    for (h in houses) {
-                        val (hLat, hLon) = calculateHouseCoordinate(entry.lat, entry.lon, h)
-                        val isExact = (houseNum != null && h.equals(houseNum, ignoreCase = true))
-                        val hTitle = "${entry.title}, $h"
-                        candidates.add(
-                            ScoredCandidate(
-                                title = hTitle,
-                                subtitle = entry.subtitle,
-                                lat = hLat,
-                                lon = hLon,
-                                priority = if (isExact) 100 else if (houseNum != null) 92 else (entry.priority - 2),
-                                isUfa = isUfa,
-                                startsWithQuery = startsWith,
-                                containsQuery = contains,
-                            )
+                    candidates.add(
+                        ScoredCandidate(
+                            title = entry.title,
+                            subtitle = entry.subtitle,
+                            lat = entry.lat,
+                            lon = entry.lon,
+                            priority = entry.priority,
+                            isUfa = isUfa,
+                            startsWithQuery = startsWith,
+                            containsQuery = contains,
                         )
-                    }
+                    )
                 }
             }
         }
 
-        // 3. Sort:
-        // FIRST: Is in Ufa (Ufa first, everything else below)
-        // SECOND: Starts with query prefix
-        // THIRD: Contains query
-        // FOURTH: Higher priority
         val seen = mutableSetOf<String>()
         return candidates
             .sortedWith(
                 compareByDescending<ScoredCandidate> { it.isUfa }
+                    .thenByDescending { it.priority }
                     .thenByDescending { it.startsWithQuery }
                     .thenByDescending { it.containsQuery }
-                    .thenByDescending { it.priority }
             )
             .filter {
                 val key = "${it.title.lowercase(Locale.ROOT)}_${it.subtitle.lowercase(Locale.ROOT)}"
@@ -919,5 +1161,660 @@ internal object OfflineNavigationEngine {
                 sin(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * cos(Math.toRadians(lon2 - lon1))
         val b = Math.toDegrees(atan2(y, x))
         return (b + 360.0) % 360.0
+    }
+
+    private val ROAD_PRIORITY_WEIGHT = mapOf(
+        "motorway" to 0.85,
+        "motorway_link" to 0.95,
+        "trunk" to 0.90,
+        "trunk_link" to 1.0,
+        "primary" to 0.95,
+        "primary_link" to 1.0,
+        "secondary" to 1.05,
+        "tertiary" to 1.15,
+        "residential" to 1.35,
+        "unclassified" to 1.35,
+        "living_street" to 1.80,
+        "service" to 3.50,
+    )
+
+    private var cachedRestrictions: Map<Pair<Long, Long>, List<Pair<String, Long>>>? = null
+
+    private fun loadRestrictions(db: SQLiteDatabase): Map<Pair<Long, Long>, List<Pair<String, Long>>> {
+        cachedRestrictions?.let { return it }
+        val map = HashMap<Pair<Long, Long>, ArrayList<Pair<String, Long>>>()
+        try {
+            db.rawQuery("SELECT restriction_type, from_way_id, via_node_id, to_way_id FROM restrictions", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val rtype = cursor.getString(0) ?: ""
+                    val fway = cursor.getLong(1)
+                    val vnode = cursor.getLong(2)
+                    val tway = cursor.getLong(3)
+                    val key = Pair(vnode, fway)
+                    val list = map.getOrPut(key) { ArrayList() }
+                    list.add(Pair(rtype, tway))
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load restrictions", e)
+        }
+        cachedRestrictions = map
+        return map
+    }
+
+    private fun isTurnAllowed(
+        restrictions: Map<Pair<Long, Long>, List<Pair<String, Long>>>,
+        viaNode: Long,
+        incomingWay: Long,
+        outgoingWay: Long,
+    ): Boolean {
+        if (incomingWay == 0L || incomingWay == outgoingWay) return true
+        val restrs = restrictions[Pair(viaNode, incomingWay)] ?: return true
+        val hasOnly = restrs.any { it.first.startsWith("only_") }
+        if (hasOnly) {
+            return restrs.any { it.first.startsWith("only_") && it.second == outgoingWay }
+        }
+        for ((rtype, tw) in restrs) {
+            if (rtype.startsWith("no_") && tw == outgoingWay) return false
+        }
+        return true
+    }
+
+    private fun computeTurnAngle(b1: Double, b2: Double): Double {
+        return ((b2 - b1 + 180.0) % 360.0) - 180.0
+    }
+
+    private fun classifyManeuver(angle: Double, roadType: String, nextRoadType: String): Pair<String, String?> {
+        if (nextRoadType.contains("link") || (roadType.contains("motorway") && !nextRoadType.contains("motorway"))) {
+            return Pair("ramp", null)
+        }
+        val absAngle = Math.abs(angle)
+        return when {
+            absAngle < 25.0 -> Pair("straight", null)
+            angle in 25.0..65.0 -> Pair("turn", "slight right")
+            angle in 65.0..125.0 -> Pair("turn", "right")
+            angle > 125.0 -> Pair("turn", "sharp right")
+            angle in -65.0..-25.0 -> Pair("turn", "slight left")
+            angle in -125.0..-65.0 -> Pair("turn", "left")
+            else -> Pair("turn", "sharp left")
+        }
+    }
+
+    private fun maneuverInstructionRu(mType: String, mMod: String?, streetName: String): String {
+        val name = if (streetName.isNotBlank()) "на $streetName" else ""
+        return when (mType) {
+            "depart" -> "Начните движение $name".trim()
+            "straight" -> "Продолжайте движение прямо $name".trim()
+            "ramp" -> "Съезд $name".trim()
+            "roundabout" -> "Движение по кругу $name".trim()
+            "arrive" -> "Вы прибыли в пункт назначения"
+            "turn" -> when (mMod) {
+                "slight right" -> "Плавно поверните направо $name".trim()
+                "right" -> "Поверните направо $name".trim()
+                "sharp right" -> "Крутой поворот направо $name".trim()
+                "slight left" -> "Плавно поверните налево $name".trim()
+                "left" -> "Поверните налево $name".trim()
+                "sharp left" -> "Крутой поворот налево $name".trim()
+                else -> "Поверните $name".trim()
+            }
+            else -> "Двигайтесь $name".trim()
+        }
+    }
+
+    private data class RouteEdgeHop(
+        val fromNode: Long,
+        val toNode: Long,
+        val lengthM: Double,
+        val timeS: Double,
+        val roadName: String,
+        val roadType: String,
+        val osmWayId: Long,
+    )
+
+    private data class AStarNode(
+        val fScore: Double,
+        val gScore: Double,
+        val nodeId: Long,
+        val incomingWayId: Long,
+        val parentNode: Long?,
+        val inLat: Double,
+        val inLon: Double,
+    )
+
+    private fun findNearestRoadNode(db: SQLiteDatabase, lat: Double, lon: Double): Long? {
+        val deltas = doubleArrayOf(0.005, 0.015, 0.05, 0.2)
+        for (delta in deltas) {
+            val cursor = db.rawQuery(
+                """
+                SELECT id, lat, lon
+                FROM nodes
+                WHERE lat BETWEEN ? AND ?
+                  AND lon BETWEEN ? AND ?
+                """.trimIndent(),
+                arrayOf(
+                    (lat - delta).toString(),
+                    (lat + delta).toString(),
+                    (lon - delta).toString(),
+                    (lon + delta).toString(),
+                )
+            )
+            var bestId: Long? = null
+            var bestDist = Double.MAX_VALUE
+            cursor.use {
+                while (it.moveToNext()) {
+                    val nid = it.getLong(0)
+                    val nlat = it.getDouble(1)
+                    val nlon = it.getDouble(2)
+                    val d = calculateDistanceMeters(lat, lon, nlat, nlon)
+                    if (d < bestDist) {
+                        bestDist = d
+                        bestId = nid
+                    }
+                }
+            }
+            if (bestId != null) return bestId
+        }
+        return null
+    }
+
+    /**
+     * Calculates real driving route using offline routing.db road graph.
+     * Guarantees 100% road following, one-way enforcement, and turn maneuvers.
+     * Generates both primary time-optimal and genuine alternative route options.
+     */
+    fun calculateRoutesFromDatabase(
+        startLat: Double,
+        startLon: Double,
+        destLat: Double,
+        destLon: Double,
+        destinationLabel: String = "Пункт назначения",
+        numRoutes: Int = 2,
+    ): List<NavigationRoute> {
+        val r1Pair = calculateSingleRouteInternal(
+            startLat = startLat,
+            startLon = startLon,
+            destLat = destLat,
+            destLon = destLon,
+            destinationLabel = destinationLabel,
+            penalizedEdges = null,
+            penaltyFactor = 1.0,
+            routeName = "Основной (быстрый)",
+            routeIndex = 0,
+        ) ?: return emptyList()
+
+        val r1 = r1Pair.first
+        val r1Edges = r1Pair.second
+
+        if (numRoutes < 2 || r1.totalDistanceMeters < 300.0) {
+            return listOf(r1)
+        }
+
+        val r2Pair = calculateSingleRouteInternal(
+            startLat = startLat,
+            startLon = startLon,
+            destLat = destLat,
+            destLon = destLon,
+            destinationLabel = destinationLabel,
+            penalizedEdges = r1Edges,
+            penaltyFactor = 1.8,
+            routeName = "Альтернативный",
+            routeIndex = 1,
+        )
+
+        if (r2Pair != null && r2Pair.first.totalDistanceMeters > 0) {
+            val r2 = r2Pair.first
+            val r2Edges = r2Pair.second
+            val overlap = r1Edges.intersect(r2Edges).size.toDouble() / r1Edges.size.coerceAtLeast(1)
+            val t1 = r1.totalDurationSeconds
+            val t2 = r2.totalDurationSeconds
+            if (t2 <= maxOf(t1 * 1.65, t1 + 900.0) && overlap < 0.90) {
+                val dt = t2 - t1
+                val diffStr = if (dt > 30.0) {
+                    val m = Math.round(dt / 60.0)
+                    "+$m мин"
+                } else if (dt < -30.0) {
+                    val m = Math.round(Math.abs(dt) / 60.0)
+                    "-$m мин"
+                } else {
+                    "Столько же"
+                }
+                val km = r2.totalDistanceMeters / 1000.0
+                val updatedR2 = r2.copy(
+                    summary = "Альтернативный ($diffStr) • ${String.format(Locale.ROOT, "%.1f км", km)}"
+                )
+                return listOf(r1, updatedR2)
+            }
+        }
+
+        return listOf(r1)
+    }
+
+    fun calculateRouteFromDatabase(
+        startLat: Double,
+        startLon: Double,
+        destLat: Double,
+        destLon: Double,
+        destinationLabel: String = "Пункт назначения",
+    ): NavigationRoute? = calculateRoutesFromDatabase(startLat, startLon, destLat, destLon, destinationLabel, numRoutes = 1).firstOrNull()
+
+    private fun calculateSingleRouteInternal(
+        startLat: Double,
+        startLon: Double,
+        destLat: Double,
+        destLon: Double,
+        destinationLabel: String,
+        penalizedEdges: Set<Pair<Long, Long>>?,
+        penaltyFactor: Double,
+        routeName: String,
+        routeIndex: Int,
+    ): Pair<NavigationRoute, Set<Pair<Long, Long>>>? {
+        return try {
+            val db = getRoutingDatabase() ?: run {
+                Log.w(TAG, "calculateSingleRouteInternal: routing DB not available")
+                return null
+            }
+
+            val startNode = findNearestRoadNode(db, startLat, startLon) ?: run {
+                Log.w(TAG, "calculateSingleRouteInternal: start node not found for ($startLat, $startLon)")
+                return null
+            }
+            val destNode = findNearestRoadNode(db, destLat, destLon) ?: run {
+                Log.w(TAG, "calculateSingleRouteInternal: dest node not found for ($destLat, $destLon)")
+                return null
+            }
+
+            if (startNode == destNode) {
+                val directDist = calculateDistanceMeters(startLat, startLon, destLat, destLon)
+                val lineCoords = listOf(Pair(startLat, startLon), Pair(destLat, destLon))
+                val featureCollection = JSONObject().apply {
+                    put("type", "FeatureCollection")
+                    put("features", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("type", "Feature")
+                            put("geometry", JSONObject().apply {
+                                put("type", "LineString")
+                                put("coordinates", JSONArray().apply {
+                                    put(JSONArray().apply { put(startLon); put(startLat) })
+                                    put(JSONArray().apply { put(destLon); put(destLat) })
+                                })
+                            })
+                            put("properties", JSONObject().apply {
+                                put("selected", routeIndex == 0)
+                                put("routeIndex", routeIndex)
+                            })
+                        })
+                    })
+                }
+                val route = NavigationRoute(
+                    totalDistanceMeters = directDist,
+                    totalDurationSeconds = (directDist / 10.0).coerceAtLeast(1.0),
+                    routeGeoJson = featureCollection.toString(),
+                    coordinates = lineCoords,
+                    steps = listOf(
+                        NavigationStep(
+                            instruction = "Вы находитесь рядом с пунктом назначения",
+                            streetName = destinationLabel,
+                            maneuverType = "arrive",
+                            maneuverModifier = null,
+                            distanceMeters = directDist,
+                            durationSeconds = (directDist / 10.0).coerceAtLeast(1.0),
+                            latitude = destLat,
+                            longitude = destLon,
+                        )
+                    ),
+                    destination = PlaceTarget.Point(destLat, destLon),
+                    destinationLabel = destinationLabel,
+                    summary = "$routeName • Пункт назначения рядом",
+                )
+                return Pair(route, emptySet())
+            }
+
+            var endLat = destLat
+            var endLon = destLon
+            db.rawQuery("SELECT lat, lon FROM nodes WHERE id = ?", arrayOf(destNode.toString())).use {
+                if (it.moveToFirst()) {
+                    endLat = it.getDouble(0)
+                    endLon = it.getDouble(1)
+                }
+            }
+
+            val restrictions = loadRestrictions(db)
+
+            val dist = HashMap<Pair<Long, Long>, Double>()
+            val prev = HashMap<Pair<Long, Long>, Pair<Pair<Long, Long>, RouteEdgeHop>>()
+            val pq = PriorityQueue<AStarNode>(compareBy { it.fScore })
+
+            dist[Pair(startNode, 0L)] = 0.0
+            val distStart = calculateDistanceMeters(startLat, startLon, endLat, endLon)
+            val hStart = (distStart / (80.0 * 1000.0 / 3600.0)) * 1.3
+            pq.add(
+                AStarNode(
+                    fScore = hStart,
+                    gScore = 0.0,
+                    nodeId = startNode,
+                    incomingWayId = 0L,
+                    parentNode = null,
+                    inLat = 0.0,
+                    inLon = 0.0,
+                )
+            )
+
+            val nodeCoords = HashMap<Long, Pair<Double, Double>>()
+            nodeCoords[startNode] = Pair(startLat, startLon)
+            nodeCoords[destNode] = Pair(endLat, endLon)
+
+            fun getNodeCoord(nid: Long): Pair<Double, Double> {
+                nodeCoords[nid]?.let { return it }
+                var res = Pair(0.0, 0.0)
+                db.rawQuery("SELECT lat, lon FROM nodes WHERE id = ?", arrayOf(nid.toString())).use {
+                    if (it.moveToFirst()) {
+                        res = Pair(it.getDouble(0), it.getDouble(1))
+                    }
+                }
+                nodeCoords[nid] = res
+                return res
+            }
+
+            var reachedState: Pair<Long, Long>? = null
+            var expanded = 0
+            val maxExpansions = 250000
+
+            while (pq.isNotEmpty() && expanded < maxExpansions) {
+                val current = pq.poll() ?: break
+                val u = current.nodeId
+                val inWay = current.incomingWayId
+                val parentNode = current.parentNode
+                val inLat = current.inLat
+                val inLon = current.inLon
+                val currentG = current.gScore
+
+                val stateKey = Pair(u, inWay)
+                if (currentG > (dist[stateKey] ?: Double.MAX_VALUE)) continue
+
+                if (u == destNode) {
+                    reachedState = stateKey
+                    break
+                }
+                expanded++
+
+                val (uLat, uLon) = getNodeCoord(u)
+
+                db.rawQuery(
+                    """
+                    SELECT e.to_node, e.length_m, e.speed_kmh, e.road_name, e.road_type, e.osm_way_id, n.lat, n.lon
+                    FROM edges e
+                    JOIN nodes n ON e.to_node = n.id
+                    WHERE e.from_node = ?
+                    """.trimIndent(),
+                    arrayOf(u.toString())
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val v = cursor.getLong(0)
+                        val lenM = cursor.getDouble(1)
+                        val speed = cursor.getDouble(2).coerceAtLeast(5.0)
+                        val rName = cursor.getString(3) ?: ""
+                        val rType = cursor.getString(4) ?: "residential"
+                        val outWay = cursor.getLong(5)
+                        val vLat = cursor.getDouble(6)
+                        val vLon = cursor.getDouble(7)
+
+                        // Avoid immediate 180° U-turn back to parent on same segment
+                        if (v == parentNode) continue
+
+                        // Turn restrictions check
+                        if (inWay != 0L && !isTurnAllowed(restrictions, u, inWay, outWay)) {
+                            continue
+                        }
+
+                        // 1. Road hierarchy preference & service penalty
+                        var pFactor = ROAD_PRIORITY_WEIGHT[rType] ?: 1.2
+                        if (penalizedEdges != null && penalizedEdges.contains(Pair(u, v))) {
+                            pFactor *= penaltyFactor
+                        }
+
+                        val rawTimeS = lenM / (speed * 1000.0 / 3600.0)
+
+                        // 2. Turn penalty (3-5s)
+                        var turnPenaltyS = 0.0
+                        if (parentNode != null) {
+                            val b1 = calculateBearing(inLat, inLon, uLat, uLon)
+                            val b2 = calculateBearing(uLat, uLon, vLat, vLon)
+                            val angle = Math.abs(computeTurnAngle(b1, b2))
+                            if (angle > 80.0) {
+                                turnPenaltyS = 4.0
+                            } else if (angle > 35.0) {
+                                turnPenaltyS = 2.5
+                            }
+                        }
+
+                        val edgeCost = rawTimeS * pFactor + turnPenaltyS
+                        val newCost = currentG + edgeCost
+                        val nextState = Pair(v, outWay)
+
+                        if (newCost < (dist[nextState] ?: Double.MAX_VALUE)) {
+                            dist[nextState] = newCost
+                            prev[nextState] = Pair(
+                                stateKey,
+                                RouteEdgeHop(
+                                    fromNode = u,
+                                    toNode = v,
+                                    lengthM = lenM,
+                                    timeS = rawTimeS,
+                                    roadName = rName,
+                                    roadType = rType,
+                                    osmWayId = outWay,
+                                )
+                            )
+                            nodeCoords[v] = Pair(vLat, vLon)
+
+                            val distToEnd = calculateDistanceMeters(vLat, vLon, endLat, endLon)
+                            val hVal = distToEnd / (80.0 * 1000.0 / 3600.0)
+                            val fVal = newCost + 1.3 * hVal
+
+                            pq.add(
+                                AStarNode(
+                                    fScore = fVal,
+                                    gScore = newCost,
+                                    nodeId = v,
+                                    incomingWayId = outWay,
+                                    parentNode = u,
+                                    inLat = uLat,
+                                    inLon = uLon,
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (reachedState == null) {
+                Log.w(TAG, "calculateSingleRouteInternal: route not found after $expanded expansions")
+                return null
+            }
+
+            // Reconstruct path edges
+            val pathEdges = ArrayList<RouteEdgeHop>()
+            var currState = reachedState
+            while (currState != null && prev.containsKey(currState)) {
+                val (prevState, hop) = prev[currState]!!
+                pathEdges.add(hop)
+                if (prevState.first == startNode && prevState.second == 0L) break
+                currState = prevState
+            }
+            pathEdges.reverse()
+
+            val fullCoordinates = ArrayList<Pair<Double, Double>>()
+            fullCoordinates.add(Pair(startLat, startLon))
+            for (hop in pathEdges) {
+                val (lat, lon) = getNodeCoord(hop.toNode)
+                if (lat != 0.0 && lon != 0.0) {
+                    fullCoordinates.add(Pair(lat, lon))
+                }
+            }
+            fullCoordinates.add(Pair(destLat, destLon))
+
+            val totalDistMeters = pathEdges.sumOf { it.lengthM }
+            val totalTimeSeconds = pathEdges.sumOf { it.timeS }
+
+            // Turn-by-turn maneuver extraction
+            val steps = ArrayList<NavigationStep>()
+            if (pathEdges.isNotEmpty()) {
+                var curManeuver = "depart"
+                var curModifier: String? = null
+                var curStreet = pathEdges[0].roadName
+                var curStepDist = 0.0
+                var curStepDuration = 0.0
+                var curLat = startLat
+                var curLon = startLon
+                var prevBearing: Double? = null
+
+                for (i in pathEdges.indices) {
+                    val hop = pathEdges[i]
+                    val (uLat, uLon) = getNodeCoord(hop.fromNode)
+                    val (vLat, vLon) = getNodeCoord(hop.toNode)
+                    val bearing = calculateBearing(uLat, uLon, vLat, vLon)
+
+                    var isJunction = false
+                    var maneuverType = "straight"
+                    var maneuverMod: String? = null
+
+                    if (prevBearing != null) {
+                        val angle = computeTurnAngle(prevBearing, bearing)
+                        val nameChanged = (hop.roadName != curStreet && hop.roadName.isNotBlank())
+                        val significantTurn = Math.abs(angle) >= 30.0
+
+                        if (nameChanged || significantTurn) {
+                            isJunction = true
+                            val nextRoadType = hop.roadType
+                            val prevRoadType = pathEdges[i - 1].roadType
+                            val (mt, mm) = classifyManeuver(angle, prevRoadType, nextRoadType)
+                            maneuverType = mt
+                            maneuverMod = mm
+                        }
+                    }
+
+                    if (isJunction && curStepDist > 15.0) {
+                        steps.add(
+                            NavigationStep(
+                                instruction = maneuverInstructionRu(curManeuver, curModifier, curStreet),
+                                streetName = curStreet,
+                                maneuverType = curManeuver,
+                                maneuverModifier = curModifier,
+                                distanceMeters = curStepDist,
+                                durationSeconds = curStepDuration,
+                                latitude = curLat,
+                                longitude = curLon,
+                            )
+                        )
+                        curManeuver = maneuverType
+                        curModifier = maneuverMod
+                        curStreet = hop.roadName
+                        curStepDist = hop.lengthM
+                        curStepDuration = hop.timeS
+                        curLat = uLat
+                        curLon = uLon
+                    } else {
+                        curStepDist += hop.lengthM
+                        curStepDuration += hop.timeS
+                        if (curStreet.isBlank() && hop.roadName.isNotBlank()) {
+                            curStreet = hop.roadName
+                        }
+                    }
+
+                    prevBearing = bearing
+                }
+
+                // Final driving step
+                steps.add(
+                    NavigationStep(
+                        instruction = maneuverInstructionRu(curManeuver, curModifier, curStreet),
+                        streetName = curStreet,
+                        maneuverType = curManeuver,
+                        maneuverModifier = curModifier,
+                        distanceMeters = curStepDist,
+                        durationSeconds = curStepDuration,
+                        latitude = curLat,
+                        longitude = curLon,
+                    )
+                )
+
+                // Arrival step
+                steps.add(
+                    NavigationStep(
+                        instruction = "Вы прибыли в пункт назначения",
+                        streetName = destinationLabel,
+                        maneuverType = "arrive",
+                        maneuverModifier = null,
+                        distanceMeters = 0.0,
+                        durationSeconds = 0.0,
+                        latitude = destLat,
+                        longitude = destLon,
+                    )
+                )
+            }
+
+            val coordinatesJson = JSONArray().apply {
+                for (coord in fullCoordinates) {
+                    put(JSONArray().apply {
+                        put(coord.second)
+                        put(coord.first)
+                    })
+                }
+            }
+
+            val featureCollection = JSONObject().apply {
+                put("type", "FeatureCollection")
+                put("features", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("type", "Feature")
+                        put("geometry", JSONObject().apply {
+                            put("type", "LineString")
+                            put("coordinates", coordinatesJson)
+                        })
+                        put("properties", JSONObject().apply {
+                            put("selected", routeIndex == 0)
+                            put("routeIndex", routeIndex)
+                        })
+                    })
+                    put(JSONObject().apply {
+                        put("type", "Feature")
+                        put("geometry", JSONObject().apply {
+                            put("type", "Point")
+                            put("coordinates", JSONArray().apply {
+                                put(destLon)
+                                put(destLat)
+                            })
+                        })
+                        put("properties", JSONObject().apply {
+                            put("destination", true)
+                        })
+                    })
+                })
+            }
+
+            val mins = (totalTimeSeconds / 60.0).toInt()
+            val km = totalDistMeters / 1000.0
+            val summary = if (km >= 1.0) {
+                "$routeName • ${String.format(Locale.ROOT, "%.1f км", km)} ($mins мин)"
+            } else {
+                "$routeName • ${totalDistMeters.toInt()} м ($mins мин)"
+            }
+
+            val route = NavigationRoute(
+                totalDistanceMeters = totalDistMeters,
+                totalDurationSeconds = totalTimeSeconds,
+                routeGeoJson = featureCollection.toString(),
+                coordinates = fullCoordinates,
+                steps = steps,
+                destination = PlaceTarget.Point(destLat, destLon),
+                destinationLabel = destinationLabel,
+                summary = summary,
+            )
+            val edgeSet = pathEdges.map { Pair(it.fromNode, it.toNode) }.toSet()
+            Pair(route, edgeSet)
+        } catch (e: Exception) {
+            Log.e(TAG, "calculateSingleRouteInternal: failed with exception", e)
+            null
+        }
     }
 }

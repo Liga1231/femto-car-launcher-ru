@@ -63,7 +63,7 @@ internal class DestinationGeocoder(
             ).any { trimmed.contains(it, ignoreCase = true) }
 
             val queriesToTry = if (!hasExplicitCity) {
-                listOf(trimmed, "$trimmed, Россия")
+                listOf("$trimmed, Уфа", trimmed, "$trimmed, Россия")
             } else {
                 listOf(trimmed)
             }
@@ -97,7 +97,22 @@ internal class DestinationGeocoder(
                 }
             }
 
-            // 2. Fallback to Nominatim search API
+            // 2. Fallback to Nominatim search API with Ufa location bias
+            val effectiveLocation = Location("default").apply {
+                latitude = 54.7350
+                longitude = 55.9580
+            }
+            val delta = 0.6
+            val viewbox =
+                String.format(
+                    Locale.ROOT,
+                    "%.4f,%.4f,%.4f,%.4f",
+                    effectiveLocation.longitude - delta,
+                    effectiveLocation.latitude + delta,
+                    effectiveLocation.longitude + delta,
+                    effectiveLocation.latitude - delta,
+                )
+
             for (candidate in queriesToTry) {
                 val point = runCatching {
                     val url =
@@ -110,6 +125,8 @@ internal class DestinationGeocoder(
                             .addQueryParameter("countrycodes", "ru")
                             .addQueryParameter("accept-language", "ru")
                             .addQueryParameter("addressdetails", "1")
+                            .addQueryParameter("viewbox", viewbox)
+                            .addQueryParameter("bounded", "0")
                             .addQueryParameter("q", candidate)
                             .build()
 
@@ -299,10 +316,17 @@ internal class DestinationGeocoder(
                 OfflineNavigationEngine.searchPlaces(query, maxResults)
             }.getOrDefault(emptyList())
 
-            val combined = (localResults + results)
-                .filter { isRussianLocation(it.title, it.subtitle, it.point.latitude, it.point.longitude) }
-                .distinctBy { "${it.title.lowercase(Locale.ROOT)}_${it.subtitle.lowercase(Locale.ROOT)}" }
-                .take(maxResults)
+            val combined = if (results.isNotEmpty()) {
+                (results + localResults)
+                    .filter { isRussianLocation(it.title, it.subtitle, it.point.latitude, it.point.longitude) }
+                    .distinctBy { "${it.title.lowercase(Locale.ROOT)}_${it.subtitle.lowercase(Locale.ROOT)}" }
+                    .take(maxResults)
+            } else {
+                localResults
+                    .filter { isRussianLocation(it.title, it.subtitle, it.point.latitude, it.point.longitude) }
+                    .distinctBy { "${it.title.lowercase(Locale.ROOT)}_${it.subtitle.lowercase(Locale.ROOT)}" }
+                    .take(maxResults)
+            }
 
             combined
         }

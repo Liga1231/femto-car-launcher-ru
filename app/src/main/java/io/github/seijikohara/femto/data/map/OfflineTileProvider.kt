@@ -8,6 +8,7 @@ import android.util.LruCache
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.zip.GZIPInputStream
 
 private const val TAG = "OfflineTileProvider"
 
@@ -39,13 +40,16 @@ internal class OfflineTileProvider(private val context: Context) {
         if (database?.isOpen == true) return true
 
         val candidates = listOfNotNull(
-            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/bashkortostan.mbtiles"),
-            File("/sdcard/Femto/maps/bashkortostan.mbtiles"),
-            context.getExternalFilesDir("maps")?.let { File(it, "bashkortostan.mbtiles") },
-            File("/sdcard/Femto/maps/map.mbtiles"),
             context.getExternalFilesDir("maps")?.let { File(it, "map.mbtiles") },
-            File(Environment.getExternalStorageDirectory(), "Femto/maps/bashkortostan.mbtiles"),
+            context.getExternalFilesDir("maps")?.let { File(it, "bashkortostan.mbtiles") },
+            File(context.filesDir, "map.mbtiles"),
+            File(context.filesDir, "bashkortostan.mbtiles"),
+            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/map.mbtiles"),
+            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/bashkortostan.mbtiles"),
+            File("/sdcard/Femto/maps/map.mbtiles"),
+            File("/sdcard/Femto/maps/bashkortostan.mbtiles"),
             File(Environment.getExternalStorageDirectory(), "Femto/maps/map.mbtiles"),
+            File(Environment.getExternalStorageDirectory(), "Femto/maps/bashkortostan.mbtiles"),
         )
 
         for (candidate in candidates) {
@@ -70,6 +74,8 @@ internal class OfflineTileProvider(private val context: Context) {
         // Search directory context.getExternalFilesDir("maps") or /sdcard/Femto/maps/ for any .mbtiles
         val searchDirs = listOfNotNull(
             context.getExternalFilesDir("maps"),
+            context.filesDir,
+            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps"),
             File("/sdcard/Femto/maps"),
             File(Environment.getExternalStorageDirectory(), "Femto/maps"),
         )
@@ -155,10 +161,21 @@ internal class OfflineTileProvider(private val context: Context) {
                     }
                 }
             }
-            if (pbf != null) {
-                tileCache.put(key, pbf)
+            if (pbf != null && pbf.isNotEmpty()) {
+                val decompressed = if (pbf.size >= 2 && pbf[0] == 0x1f.toByte() && pbf[1] == 0x8b.toByte()) {
+                    try {
+                        GZIPInputStream(pbf.inputStream()).use { it.readBytes() }
+                    } catch (e: Exception) {
+                        pbf
+                    }
+                } else {
+                    pbf
+                }
+                tileCache.put(key, decompressed)
+                decompressed
+            } else {
+                null
             }
-            pbf
         } catch (e: Exception) {
             Log.w(TAG, "Error fetching tile z=$z, x=$x, y=$y", e)
             null
@@ -171,6 +188,7 @@ internal class OfflineTileProvider(private val context: Context) {
     fun getTileJson(tileUrlTemplate: String = "https://appassets.androidplatform.net/offline-tiles/tiles/{z}/{x}/{y}.pbf"): String {
         var minZoom = 0
         var maxZoom = 14
+        var vectorLayers: JSONArray? = null
 
         synchronized(this) {
             database?.let { db ->
@@ -185,6 +203,14 @@ internal class OfflineTileProvider(private val context: Context) {
                             when (name) {
                                 "minzoom" -> value.toIntOrNull()?.let { z -> minZoom = z }
                                 "maxzoom" -> value.toIntOrNull()?.let { z -> maxZoom = z }
+                                "json" -> {
+                                    runCatching {
+                                        val obj = JSONObject(value)
+                                        if (obj.has("vector_layers")) {
+                                            vectorLayers = obj.getJSONArray("vector_layers")
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -203,10 +229,10 @@ internal class OfflineTileProvider(private val context: Context) {
             put("minzoom", minZoom)
             put("maxzoom", maxZoom)
             put("bounds", JSONArray().apply {
-                put(bounds[0])
-                put(bounds[1])
-                put(bounds[2])
-                put(bounds[3])
+                put(-180.0)
+                put(-85.05113)
+                put(180.0)
+                put(85.05113)
             })
             put("center", JSONArray().apply {
                 put(center[0])
@@ -216,6 +242,9 @@ internal class OfflineTileProvider(private val context: Context) {
             put("tiles", JSONArray().apply {
                 put(tileUrlTemplate)
             })
+            if (vectorLayers != null) {
+                put("vector_layers", vectorLayers)
+            }
         }
 
         return json.toString()

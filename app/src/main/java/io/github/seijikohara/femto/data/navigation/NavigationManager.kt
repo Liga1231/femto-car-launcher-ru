@@ -82,14 +82,28 @@ internal class NavigationManager(
                     destinationLabel = destLabel,
                 )
 
-                if (routes.isEmpty()) {
+                val effectiveRoutes = if (routes.isNotEmpty()) {
+                    routes
+                } else if (OfflineNavigationEngine.isOfflineRoutingAvailable()) {
+                    OfflineNavigationEngine.calculateRoutesFromDatabase(
+                        startLat = startLoc.latitude,
+                        startLon = startLoc.longitude,
+                        destLat = destPoint.latitude,
+                        destLon = destPoint.longitude,
+                        destinationLabel = destLabel,
+                    )
+                } else {
+                    emptyList()
+                }
+
+                if (effectiveRoutes.isEmpty()) {
                     _state.value = NavigationState.Error("Маршрут не найден или нет подключения к сети", destLabel)
                     return@launch
                 }
 
                 // Show route preview with alternatives on map & HUD!
                 _state.value = NavigationState.RouteSelection(
-                    routes = routes,
+                    routes = effectiveRoutes,
                     selectedIndex = 0,
                     destinationLabel = destLabel,
                 )
@@ -260,7 +274,15 @@ internal class NavigationManager(
                     destLat = route.destination.latitude,
                     destLon = route.destination.longitude,
                     destinationLabel = route.destinationLabel,
-                )
+                ) ?: if (OfflineNavigationEngine.isOfflineRoutingAvailable()) {
+                    OfflineNavigationEngine.calculateRouteFromDatabase(
+                        startLat = currentLocation.latitude,
+                        startLon = currentLocation.longitude,
+                        destLat = route.destination.latitude,
+                        destLon = route.destination.longitude,
+                        destinationLabel = route.destinationLabel,
+                    )
+                } else null
                 if (newRoute != null) {
                     val distanceToFirst = newRoute.steps.firstOrNull()?.let {
                         computeDistance(

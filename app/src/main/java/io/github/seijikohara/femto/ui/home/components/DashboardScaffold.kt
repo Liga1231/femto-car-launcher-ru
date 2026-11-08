@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -58,6 +59,8 @@ import io.github.seijikohara.femto.data.display.DockWidth
 import io.github.seijikohara.femto.data.display.DriverSide
 import io.github.seijikohara.femto.data.display.MotionTier
 import io.github.seijikohara.femto.data.display.MusicCardHeight
+import io.github.seijikohara.femto.data.navigation.NetworkMonitor
+import io.github.seijikohara.femto.data.navigation.OfflineNavigationEngine
 import io.github.seijikohara.femto.data.music.MusicCardState
 import io.github.seijikohara.femto.data.music.MusicVibe
 import io.github.seijikohara.femto.data.navigation.NavigationState
@@ -567,6 +570,35 @@ private fun DashboardContent(
         )
     }
 
+    val context = LocalContext.current
+    OfflineNavigationEngine.init(context)
+    val networkMonitor = remember { NetworkMonitor.get(context) }
+    var isOfflineAreaAllowed by remember {
+        mutableStateOf(
+            OfflineNavigationEngine.isOfflineDataAvailable() &&
+                (uiState.location == null || OfflineNavigationEngine.isInsideDownloadedArea(
+                    uiState.location.latitude,
+                    uiState.location.longitude,
+                ))
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        networkMonitor.addOnNetworkLostListener {
+            val loc = uiState.location
+            isOfflineAreaAllowed = OfflineNavigationEngine.isOfflineDataAvailable() &&
+                (loc == null || OfflineNavigationEngine.isInsideDownloadedArea(loc.latitude, loc.longitude))
+        }
+    }
+
+    LaunchedEffect(uiState.location) {
+        val loc = uiState.location
+        if (loc != null) {
+            isOfflineAreaAllowed = OfflineNavigationEngine.isOfflineDataAvailable() &&
+                OfflineNavigationEngine.isInsideDownloadedArea(loc.latitude, loc.longitude)
+        }
+    }
+
     // The overlay tree insets by the dock footprint so its glass never sits under
     // the dock's nav buttons while the map shows through behind it.
     DashboardOverlays(
@@ -648,6 +680,7 @@ private fun DashboardContent(
         musicShowArt = musicShowArt,
         musicCardHeight = musicCardHeight,
         clock = clock,
+        canUseOfflineNav = isOfflineAreaAllowed,
     )
 
     // The dock as a glass bar / rail on its edge, drawn over the full-bleed map.
@@ -662,6 +695,7 @@ private fun DashboardContent(
         motionTier = motionTier,
         updateBadge = uiState.updateBadge,
         onDockWidthChanged = { dockWidthPx = it },
+        canUseOfflineNav = isOfflineAreaAllowed,
         modifier =
             when (dockPosition) {
                 DockPosition.BOTTOM, DockPosition.TOP -> {
@@ -818,6 +852,7 @@ private fun DashboardOverlays(
     musicShowArt: Boolean = true,
     musicCardHeight: MusicCardHeight = MusicCardHeight.NORMAL,
     clock: Clock = Clock.systemDefaultZone(),
+    canUseOfflineNav: Boolean = false,
 ) {
     // Render-caches for the exit animations, derived from uiState (the expanded
     // booleans themselves live in DashboardContent). Hold the last live value so
@@ -1249,6 +1284,7 @@ private fun DashboardOverlays(
                 currentPoint = uiState.location?.let { PlaceTarget.Point(it.latitude, it.longitude) },
                 currentAddress = uiState.address?.displayString().orEmpty(),
                 isOnline = uiState.systemStatus.isOnline,
+                canUseOfflineNav = canUseOfflineNav,
                 onNavigate = { target, label -> onAction(HomeAction.Navigate(target, label)) },
                 onOpenMaps = { onAction(HomeAction.OpenMaps) },
                 onClose = onCloseDestination,
