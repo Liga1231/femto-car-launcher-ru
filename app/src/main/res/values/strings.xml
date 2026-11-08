@@ -679,4 +679,71 @@
     <string name="vibe_popular">Popular</string>
     <string name="music_vibes_title">Mood &amp; Wave</string>
     <string name="music_source_yandex">Yandex Music</string>
+    <!-- Quick Settings Panel -->
+    <string name="quick_settings_title">QUICK SETTINGS</string>
+    <string name="quick_settings_close">Close</string>
+    <string name="quick_settings_all_settings">All system settings</string>
+    <string name="quick_settings_status_connected">Connected</string>
+    <string name="quick_settings_status_enabled">Enabled</string>
+    <string name="quick_settings_status_disabled">Disabled</string>
+    <string name="quick_settings_airplane_mode">Airplane mode</string>
+    <string name="quick_settings_mobile_data">Mobile data</string>
+    <string name="quick_settings_hotspot">Hotspot</string>
+    <string name="quick_settings_hotspot_subtitle">Wi-Fi tethering</string>
+    <string name="quick_settings_location">Location (GPS)</string>
+    <string name="quick_settings_gps_fixed">Enabled • Fix (%1$d sats)</string>
+    <string name="quick_settings_gps_searching">Enabled • Search (%1$d sats)</string>
+    <string name="quick_settings_volume">Volume</string>
+    <string name="quick_settings_media_volume">Media volume</string>
+    <string name="quick_settings_brightness">Brightness</string>
+    <string name="quick_settings_screen_brightness">Screen brightness</string>
+    <string name="quick_settings_settings">Settings</string>
+    <string name="quick_settings_reboot">Reboot</string>
+    <string name="quick_settings_power_off">Power off</string>
+    <string name="quick_settings_unavailable_in_motion">Unavailable while vehicle is in motion</string>
+    <string name="quick_settings_dialog_reboot_title">Restart device</string>
+    <string name="quick_settings_dialog_reboot_message">Are you sure you want to restart the head unit?</string>
+    <string name="quick_settings_dialog_reboot_confirm">Restart</string>
+    <string name="quick_settings_dialog_cancel">Cancel</string>
+    <string name="quick_settings_dialog_power_title">Turn off device</string>
+    <string name="quick_settings_dialog_power_message">Are you sure you want to turn off the head unit?</string>
+    <string name="quick_settings_dialog_power_confirm">Turn off</string>
+    <string name="quick_settings_tile_settings_desc">%1$s settings</string>
+
+    <!-- Navigation HUD -->
+    <string name="nav_hud_end_route">End route</string>
+    <string name="nav_hud_cancel_navigation">Cancel navigation</string>
+    <string name="nav_hud_remaining_prefix">Remaining %1$s</string>
+    <string name="nav_hud_eta_prefix">Arrival %1$s</string>
+    <string name="nav_hud_calculating">Calculating route…</string>
+    <string name="nav_hud_arrived">You arrived!</string>
+    <string name="nav_hud_route_error">Route error</string>
+    <string name="nav_hud_distance_now">Now</string>
+    <string name="nav_hud_distance_meters">%1$d m</string>
+    <string name="nav_hud_distance_kilometers">%.1f km</string>
+    <string name="nav_hud_distance_kilometers_int">%1$d km</string>
+    <string name="nav_hud_duration_less_minute">&lt; 1 min</string>
+    <string name="nav_hud_duration_hours_minutes">%1$d h %2$d min</string>
+    <string name="nav_hud_duration_minutes">%1$d min</string>
+    <string name="nav_hud_select_route">Select route</string>
+    <string name="nav_hud_start">Start</string>
+
+    <!-- Destination Panel -->
+    <string name="destination_no_internet_banner">No internet connection. Address search and navigation are available online only.</string>
+    <string name="destination_search_blocked_title">Search disabled without internet</string>
+    <string name="destination_search_blocked_desc">Address search and route planning work online. Connect to the internet to find places.</string>
+    <string name="destination_search_blocked_hint">Search disabled (no internet)</string>
+    <string name="destination_clear_query">Clear</string>
+    <string name="destination_navigate_needs_internet">Internet required</string>
+    <string name="destination_recent_route_default">Recent route</string>
+    <string name="destination_suggestions_header">ADDRESS SUGGESTIONS</string>
+    <string name="destination_no_suggestions">No addresses found</string>
+    <string name="destination_quick_streets">Quick street selection:</string>
+    <string name="destination_target_point_default">Destination</string>
+
+    <!-- Music and Dock -->
+    <string name="music_vibe_offline">Offline</string>
+    <string name="music_vibe_needs_internet">My Wave requires an active internet connection</string>
+    <string name="music_mood_no_internet">No internet connection. My Wave works online only.</string>
+    <string name="status_gps_off">OFF</string>
 </resources>

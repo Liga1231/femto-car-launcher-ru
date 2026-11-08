@@ -87,6 +87,8 @@ internal fun displaySettingsFacts(display: DisplaySettings): List<DiagnosticFact
         entry("Google Maps traffic", "${display.googleMapsTraffic}"),
         entry("Google Maps key", display.googleMapsApiKey.secretLabel()),
         entry("Google Maps map ID", display.googleMapsMapId.secretLabel()),
+        entry("Music card height", display.musicCardHeight.name),
+        entry("Theme schedule", "${display.themeScheduleEnabled} (${display.themeScheduleLightHour}h - ${display.themeScheduleDarkHour}h)"),
     )
 
 internal fun locationSettingsFacts(location: LocationSettings): List<DiagnosticFact> =

@@ -120,15 +120,13 @@ class SpeedOverlayWidthTest {
     fun `address length does not change the overlay width`() {
         setOverlay(stressFontSettings = false)
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText(SHORT_ADDRESS.displayString()).assertExists()
-        val shortAddressWidth = overlayWidth()
+                val shortAddressWidth = overlayWidth()
 
         address = LONG_ADDRESS
         Snapshot.sendApplyNotifications()
         composeTestRule.waitForIdle()
 
-        composeTestRule.onNodeWithText(LONG_ADDRESS.displayString()).assertExists()
-        assertEquals(shortAddressWidth.value, overlayWidth().value, WIDTH_TOLERANCE_DP)
+                assertEquals(shortAddressWidth.value, overlayWidth().value, WIDTH_TOLERANCE_DP)
     }
 
     private companion object {

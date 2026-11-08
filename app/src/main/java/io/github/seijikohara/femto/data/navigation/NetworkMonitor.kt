@@ -86,9 +86,21 @@ internal class NetworkMonitor private constructor(context: Context) {
         }
     }
 
+    fun removeOnNetworkLostListener(listener: () -> Unit) {
+        synchronized(networkLostListeners) {
+            networkLostListeners.remove(listener)
+        }
+    }
+
     fun addOnNetworkAvailableListener(listener: () -> Unit) {
         synchronized(networkAvailableListeners) {
             networkAvailableListeners.add(listener)
+        }
+    }
+
+    fun removeOnNetworkAvailableListener(listener: () -> Unit) {
+        synchronized(networkAvailableListeners) {
+            networkAvailableListeners.remove(listener)
         }
     }
 

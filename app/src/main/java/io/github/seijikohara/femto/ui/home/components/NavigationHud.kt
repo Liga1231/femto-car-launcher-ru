@@ -27,6 +27,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.stringResource
+import io.github.seijikohara.femto.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -225,13 +227,13 @@ private fun CompactNavigationPill(
                         .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f))
                         .clickable(
                             role = Role.Button,
-                            onClickLabel = "Завершить маршрут",
+                            onClickLabel = stringResource(R.string.nav_hud_end_route),
                             onClick = onStop,
                         ),
             ) {
                 Icon(
                     imageVector = Lucide.X,
-                    contentDescription = "Отмена навигации",
+                    contentDescription = stringResource(R.string.nav_hud_cancel_navigation),
                     tint = MaterialTheme.colorScheme.onErrorContainer,
                     modifier = Modifier.size(18.dp),
                 )
@@ -257,7 +259,7 @@ private fun CompactNavigationPill(
                         ).padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 Text(
-                    text = "Осталось ${formatDistance(active.remainingDistanceMeters)}",
+                    text = stringResource(R.string.nav_hud_remaining_prefix, formatDistance(active.remainingDistanceMeters)),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -277,7 +279,7 @@ private fun CompactNavigationPill(
                     color = MaterialTheme.colorScheme.outline,
                 )
                 Text(
-                    text = "Прибытие ${formatEta(active.etaTimestampMillis, is24Hour)}",
+                    text = stringResource(R.string.nav_hud_eta_prefix, formatEta(active.etaTimestampMillis, is24Hour)),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary,
@@ -310,7 +312,7 @@ private fun CompactLoadingPill(
         )
         Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = "Маршрут...",
+            text = stringResource(R.string.nav_hud_calculating),
             style =
                 MaterialTheme.typography.titleMedium.copy(
                     fontSize = 16.sp,
@@ -338,7 +340,7 @@ private fun CompactLoadingPill(
         ) {
             Icon(
                 imageVector = Lucide.X,
-                contentDescription = "Отмена",
+                contentDescription = stringResource(R.string.nav_hud_cancel_navigation),
                 tint = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.size(18.dp),
             )
@@ -370,7 +372,7 @@ private fun CompactArrivedPill(
         )
         Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = "Вы прибыли!",
+            text = stringResource(R.string.nav_hud_arrived),
             style =
                 MaterialTheme.typography.titleMedium.copy(
                     fontSize = 16.sp,
@@ -398,7 +400,7 @@ private fun CompactArrivedPill(
         ) {
             Icon(
                 imageVector = Lucide.X,
-                contentDescription = "Закрыть",
+                contentDescription = stringResource(R.string.quick_settings_close),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
             )
@@ -431,7 +433,7 @@ private fun CompactErrorPill(
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = message.ifBlank { "Ошибка маршрута" },
+            text = message.ifBlank { stringResource(R.string.nav_hud_route_error) },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.error,
             maxLines = 1,
@@ -450,7 +452,7 @@ private fun CompactErrorPill(
         ) {
             Icon(
                 imageVector = Lucide.X,
-                contentDescription = "Закрыть",
+                contentDescription = stringResource(R.string.quick_settings_close),
                 tint = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.size(18.dp),
             )
@@ -511,23 +513,25 @@ private fun maneuverIcon(
     }
 }
 
+@Composable
 private fun formatDistance(meters: Double): String =
     when {
-        meters < 50 -> "Сейчас"
-        meters < 1000 -> "${((meters + 5) / 10).toInt() * 10} м"
-        meters < 10000 -> String.format(Locale.ROOT, "%.1f км", meters / 1000.0)
-        else -> "${(meters / 1000.0).toInt()} км"
+        meters < 50 -> stringResource(R.string.nav_hud_distance_now)
+        meters < 1000 -> stringResource(R.string.nav_hud_distance_meters, ((meters + 5) / 10).toInt() * 10)
+        meters < 10000 -> stringResource(R.string.nav_hud_distance_kilometers, meters / 1000.0)
+        else -> stringResource(R.string.nav_hud_distance_kilometers_int, (meters / 1000.0).toInt())
     }
 
+@Composable
 private fun formatDuration(seconds: Double): String {
     val totalMinutes = (seconds / 60.0).toInt()
-    if (totalMinutes < 1) return "< 1 мин"
+    if (totalMinutes < 1) return stringResource(R.string.nav_hud_duration_less_minute)
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
     return if (hours > 0) {
-        "$hours ч $minutes мин"
+        stringResource(R.string.nav_hud_duration_hours_minutes, hours, minutes)
     } else {
-        "$minutes мин"
+        stringResource(R.string.nav_hud_duration_minutes, minutes)
     }
 }
 
@@ -587,7 +591,7 @@ private fun CompactRouteSelectionCard(
                     }
                     Column {
                         Text(
-                            text = "Выберите маршрут",
+                            text = stringResource(R.string.nav_hud_select_route),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -608,7 +612,7 @@ private fun CompactRouteSelectionCard(
                 ) {
                     Icon(
                         imageVector = Lucide.X,
-                        contentDescription = "Отмена",
+                        contentDescription = stringResource(R.string.nav_hud_cancel_navigation),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp),
                     )
@@ -656,7 +660,7 @@ private fun CompactRouteSelectionCard(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
-                                    text = "$durationMin мин",
+                                    text = stringResource(R.string.nav_hud_duration_minutes, durationMin),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color =
@@ -675,7 +679,7 @@ private fun CompactRouteSelectionCard(
                                 }
                             }
                             Text(
-                                text = String.format(Locale.getDefault(), "%.1f км", distanceKm),
+                                text = stringResource(R.string.nav_hud_distance_kilometers, distanceKm),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -710,7 +714,7 @@ private fun CompactRouteSelectionCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Поехали",
+                    text = stringResource(R.string.nav_hud_start),
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 )
             }

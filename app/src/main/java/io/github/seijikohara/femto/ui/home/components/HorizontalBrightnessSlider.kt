@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.stringResource
+import io.github.seijikohara.femto.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -135,7 +137,7 @@ internal fun HorizontalBrightnessSlider(
             ) {
                 FemtoIcon(
                     imageVector = Lucide.Sun,
-                    contentDescription = "Яркость",
+                    contentDescription = stringResource(R.string.quick_settings_brightness),
                     tint =
                         if (brightness > 0.5f) {
                             MaterialTheme.colorScheme.primary

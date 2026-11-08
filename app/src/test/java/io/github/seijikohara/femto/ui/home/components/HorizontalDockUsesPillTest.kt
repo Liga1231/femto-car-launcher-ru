@@ -55,7 +55,7 @@ class HorizontalDockUsesPillTest {
     // the status threshold the reserve is already gone, so the pill fits again.
     @Test
     fun `a dock too narrow to show the status cluster keeps the pill`() =
-        assertTrue(horizontalDockUsesPill(DockWidth.COMPACT, 690.dp, navCount, statusCount))
+        assertTrue(horizontalDockUsesPill(DockWidth.COMPACT, 780.dp, navCount, statusCount))
 }
 
 /**

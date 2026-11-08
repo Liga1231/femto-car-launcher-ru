@@ -235,7 +235,7 @@ private fun OfflineWarningBanner(modifier: Modifier = Modifier) {
                 modifier = Modifier.size(22.dp),
             )
             Text(
-                text = "Нет подключения к интернету. Поиск адресов и навигация доступны только онлайн.",
+                text = stringResource(R.string.destination_no_internet_banner),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -260,12 +260,12 @@ private fun OfflineSearchBlocked(modifier: Modifier = Modifier) {
                 tint = MaterialTheme.colorScheme.error,
             )
             Text(
-                text = "Поиск заблокирован без интернета",
+                text = stringResource(R.string.destination_search_blocked_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "Поиск адресов и расчёт маршрутов работают в онлайн-режиме. Подключите интернет для поиска мест.",
+                text = stringResource(R.string.destination_search_blocked_desc),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -330,7 +330,7 @@ private fun DestinationEntry(
                 textStyle = MaterialTheme.typography.drawerBody(),
                 placeholder = {
                     Text(
-                        text = if (!isSearchEnabled) "Поиск заблокирован (нет интернета)" else stringResource(R.string.destination_query_hint),
+                        text = if (!isSearchEnabled) stringResource(R.string.destination_search_blocked_hint) else stringResource(R.string.destination_query_hint),
                         style = MaterialTheme.typography.drawerBody(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -353,7 +353,7 @@ private fun DestinationEntry(
                         ) {
                             FemtoIcon(
                                 imageVector = Lucide.X,
-                                contentDescription = "Очистить",
+                                contentDescription = stringResource(R.string.destination_clear_query),
                                 tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(20.dp),
                             )
@@ -392,7 +392,7 @@ private fun DestinationEntry(
                 modifier = Modifier.size(FemtoDimens.InlineIconSize),
             )
             Text(
-                text = if (!isSearchEnabled) "Требуется интернет" else stringResource(R.string.destination_navigate),
+                text = if (!isSearchEnabled) stringResource(R.string.destination_navigate_needs_internet) else stringResource(R.string.destination_navigate),
                 modifier = Modifier.padding(start = ButtonDefaults.IconSpacing),
             )
         }
@@ -496,14 +496,14 @@ private fun SavedPlacesAndHistory(
         modifier = Modifier.fillMaxWidth().weight(1f),
         verticalArrangement = Arrangement.spacedBy(FemtoDimens.CardSectionGap),
     ) {
+        item(key = "header_saved") {
+            Text(
+                text = stringResource(R.string.destination_saved_places).uppercase(),
+                style = MaterialTheme.typography.eyebrow(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         if (places.isNotEmpty()) {
-            item(key = "header_saved") {
-                Text(
-                    text = stringResource(R.string.destination_saved_places).uppercase(),
-                    style = MaterialTheme.typography.eyebrow(),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             items(places, key = { "place_${it.id}" }) { place ->
                 SavedPlaceRow(
                     place = place,
@@ -632,7 +632,7 @@ private fun HistoryItemRow(
                         System.currentTimeMillis(),
                         DateUtils.MINUTE_IN_MILLIS,
                     ).toString()
-                }.getOrNull() ?: "Недавний маршрут"
+                }.getOrNull() ?: stringResource(R.string.destination_recent_route_default)
 
             Text(
                 text = queryText ?: timeText,
@@ -725,7 +725,7 @@ private fun AddressSuggestions(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "ПРЕДЛОЖЕНИЯ АДРЕСОВ",
+            text = stringResource(R.string.destination_suggestions_header),
             style = MaterialTheme.typography.eyebrow(),
             color = MaterialTheme.colorScheme.primary,
         )
@@ -740,7 +740,7 @@ private fun AddressSuggestions(
 
     if (suggestions.isEmpty() && !isSearching) {
         Text(
-            text = "Адреса не найдены",
+            text = stringResource(R.string.destination_no_suggestions),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -789,7 +789,7 @@ private fun QuickStreetSuggestionsBar(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "Быстрый выбор улицы:",
+                text = stringResource(R.string.destination_quick_streets),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -960,7 +960,7 @@ internal fun DestinationPanelHost(
                 label.ifBlank {
                     when (target) {
                         is PlaceTarget.Query -> target.text
-                        is PlaceTarget.Point -> "Пункт назначения"
+                        is PlaceTarget.Point -> context.getString(R.string.destination_target_point_default)
                     }
                 }
             viewModel.recordDestination(resolvedLabel, target)

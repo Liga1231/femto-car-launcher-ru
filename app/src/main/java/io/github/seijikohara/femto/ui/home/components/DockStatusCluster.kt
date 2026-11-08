@@ -373,7 +373,7 @@ private fun GpsIndicator(
             modifier = Modifier.size(20.dp),
         )
         Text(
-            text = if (!isEnabled) "ВЫКЛ" else stringResource(R.string.status_gps_satellites, count),
+            text = if (!isEnabled) stringResource(R.string.status_gps_off) else stringResource(R.string.status_gps_satellites, count),
             style = MaterialTheme.typography.glanceCaption(),
             color = tint,
             maxLines = 1,

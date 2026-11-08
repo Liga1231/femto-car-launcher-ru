@@ -6,6 +6,7 @@ import android.util.Log
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.data.places.SearchHistoryStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +27,8 @@ internal class NavigationManager(
     private val destinationGeocoder: DestinationGeocoder,
     private val historyStore: SearchHistoryStore? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val _state = MutableStateFlow<NavigationState>(NavigationState.Idle)
     val state: StateFlow<NavigationState> = _state.asStateFlow()
@@ -58,7 +61,7 @@ internal class NavigationManager(
         pendingLabel = destLabel
 
         historyStore?.let { store ->
-            scope.launch(Dispatchers.IO) {
+            scope.launch(ioDispatcher) {
                 store.add(destLabel, target)
             }
         }
@@ -66,7 +69,7 @@ internal class NavigationManager(
         currentRouteJob?.cancel()
         _state.value = NavigationState.Loading(destLabel)
 
-        currentRouteJob = scope.launch(Dispatchers.Default) {
+        currentRouteJob = scope.launch(defaultDispatcher) {
             try {
                 val destPoint = destinationGeocoder.resolveTarget(target)
                 if (destPoint == null) {
@@ -328,7 +331,7 @@ internal class NavigationManager(
         route: NavigationRoute,
     ) {
         currentRouteJob?.cancel()
-        currentRouteJob = scope.launch(Dispatchers.Default) {
+        currentRouteJob = scope.launch(defaultDispatcher) {
             try {
                 val isOnline = NetworkMonitor.isOnline()
                 val isValhalla = ValhallaNavigationEngine.isAvailable(destinationGeocoder.context)

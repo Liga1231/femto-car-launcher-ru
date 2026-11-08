@@ -47,8 +47,8 @@ internal class OfflineTileProvider(private val context: Context) {
             context.getExternalFilesDir("maps")?.let { File(it, "bashkortostan.mbtiles") },
             File(context.filesDir, "map.mbtiles"),
             File(context.filesDir, "bashkortostan.mbtiles"),
-            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/map.mbtiles"),
-            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/bashkortostan.mbtiles"),
+            File("/sdcard/Android/data/${context.packageName}/files/maps/map.mbtiles"),
+            File("/sdcard/Android/data/${context.packageName}/files/maps/bashkortostan.mbtiles"),
             File("/sdcard/Femto/maps/map.mbtiles"),
             File("/sdcard/Femto/maps/bashkortostan.mbtiles"),
             File(Environment.getExternalStorageDirectory(), "Femto/maps/map.mbtiles"),
@@ -78,7 +78,7 @@ internal class OfflineTileProvider(private val context: Context) {
         val searchDirs = listOfNotNull(
             context.getExternalFilesDir("maps"),
             context.filesDir,
-            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps"),
+            File("/sdcard/Android/data/${context.packageName}/files/maps"),
             File("/sdcard/Femto/maps"),
             File(Environment.getExternalStorageDirectory(), "Femto/maps"),
         )

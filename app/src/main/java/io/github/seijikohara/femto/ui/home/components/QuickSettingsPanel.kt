@@ -51,6 +51,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import io.github.seijikohara.femto.R
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.ChevronDown
@@ -179,11 +181,11 @@ internal fun QuickSettingsPanel(
             ) {
                 PanelIconButton(
                     icon = Lucide.ChevronDown,
-                    description = "Закрыть",
+                    description = stringResource(R.string.quick_settings_close),
                     onClick = onClose,
                 )
                 Text(
-                    text = "БЫСТРЫЕ НАСТРОЙКИ",
+                    text = stringResource(R.string.quick_settings_title),
                     style = MaterialTheme.typography.eyebrow(),
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
@@ -191,7 +193,7 @@ internal fun QuickSettingsPanel(
                 )
                 PanelIconButton(
                     icon = Lucide.ExternalLink,
-                    description = "Все настройки системы",
+                    description = stringResource(R.string.quick_settings_all_settings),
                     onClick = {
                         runCatching {
                             context.startActivity(
@@ -207,15 +209,19 @@ internal fun QuickSettingsPanel(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // Row 1: Wi-Fi + Bluetooth
-                Row(
+                val connectedStr = stringResource(R.string.quick_settings_status_connected)
+            val enabledStr = stringResource(R.string.quick_settings_status_enabled)
+            val disabledStr = stringResource(R.string.quick_settings_status_disabled)
+
+            // Row 1: Wi-Fi + Bluetooth
+            Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     QuickToggleTile(
                         icon = if (wifiEnabled) Lucide.Wifi else Lucide.WifiOff,
                         title = "Wi-Fi",
-                        subtitle = if (systemStatus.wifiConnected) "Подключено" else if (wifiEnabled) "Включён" else "Отключён",
+                        subtitle = if (systemStatus.wifiConnected) connectedStr else if (wifiEnabled) enabledStr else disabledStr,
                         active = wifiEnabled,
                         onToggle = {
                             val next = !wifiEnabled
@@ -234,7 +240,7 @@ internal fun QuickSettingsPanel(
                     QuickToggleTile(
                         icon = if (btEnabled) Lucide.Bluetooth else Lucide.BluetoothOff,
                         title = "Bluetooth",
-                        subtitle = if (systemStatus.bluetoothConnected) "Подключено" else if (btEnabled) "Включён" else "Отключён",
+                        subtitle = if (systemStatus.bluetoothConnected) connectedStr else if (btEnabled) enabledStr else disabledStr,
                         active = btEnabled,
                         onToggle = {
                             val next = !btEnabled
@@ -257,8 +263,8 @@ internal fun QuickSettingsPanel(
                 ) {
                     QuickToggleTile(
                         icon = Lucide.Plane,
-                        title = "Режим полёта",
-                        subtitle = if (airplaneMode) "Включён" else "Отключён",
+                        title = stringResource(R.string.quick_settings_airplane_mode),
+                        subtitle = if (airplaneMode) enabledStr else disabledStr,
                         active = airplaneMode,
                         onToggle = {
                             val next = !airplaneMode
@@ -276,8 +282,8 @@ internal fun QuickSettingsPanel(
                     )
                     QuickToggleTile(
                         icon = Lucide.Signal,
-                        title = "Мобильные данные",
-                        subtitle = if (mobileDataEnabled) "Включены" else "Отключены",
+                        title = stringResource(R.string.quick_settings_mobile_data),
+                        subtitle = if (mobileDataEnabled) enabledStr else disabledStr,
                         active = mobileDataEnabled,
                         onToggle = {
                             val next = !mobileDataEnabled
@@ -300,8 +306,8 @@ internal fun QuickSettingsPanel(
                 ) {
                     QuickToggleTile(
                         icon = Lucide.Radio,
-                        title = "Точка доступа",
-                        subtitle = "Раздача Wi-Fi",
+                        title = stringResource(R.string.quick_settings_hotspot),
+                        subtitle = stringResource(R.string.quick_settings_hotspot_subtitle),
                         active = false,
                         onToggle = {
                             runCatching {
@@ -321,12 +327,12 @@ internal fun QuickSettingsPanel(
                     )
                     QuickToggleTile(
                         icon = Lucide.Navigation,
-                        title = "Геолокация (GPS)",
+                        title = stringResource(R.string.quick_settings_location),
                         subtitle = when {
-                            !locationEnabled -> "Отключён"
-                            systemStatus.gpsFixed -> "Включён • Фикс (${systemStatus.gpsSatelliteCount} спутн.)"
-                            systemStatus.gpsSatelliteCount > 0 -> "Включён • Поиск (${systemStatus.gpsSatelliteCount} спутн.)"
-                            else -> "Включён"
+                            !locationEnabled -> disabledStr
+                            systemStatus.gpsFixed -> stringResource(R.string.quick_settings_gps_fixed, systemStatus.gpsSatelliteCount)
+                            systemStatus.gpsSatelliteCount > 0 -> stringResource(R.string.quick_settings_gps_searching, systemStatus.gpsSatelliteCount)
+                            else -> enabledStr
                         },
                         active = locationEnabled,
                         onToggle = {
@@ -376,7 +382,7 @@ internal fun QuickSettingsPanel(
                         ) {
                             FemtoIcon(
                                 imageVector = if (currentVolume == 0) Lucide.VolumeX else Lucide.Volume2,
-                                contentDescription = "Громкость",
+                                contentDescription = stringResource(R.string.quick_settings_volume),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(24.dp),
                             )
@@ -387,7 +393,7 @@ internal fun QuickSettingsPanel(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    text = "Громкость медиа",
+                                    text = stringResource(R.string.quick_settings_media_volume),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
@@ -421,7 +427,7 @@ internal fun QuickSettingsPanel(
                     ) {
                         FemtoIcon(
                             imageVector = Lucide.Sun,
-                            contentDescription = "Яркость",
+                            contentDescription = stringResource(R.string.quick_settings_brightness),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp).padding(start = 12.dp),
                         )
@@ -431,7 +437,7 @@ internal fun QuickSettingsPanel(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    text = "Яркость экрана",
+                                    text = stringResource(R.string.quick_settings_screen_brightness),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
@@ -472,7 +478,7 @@ internal fun QuickSettingsPanel(
             ) {
                 QuickSystemButton(
                     icon = Lucide.Settings,
-                    label = "Настройки",
+                    label = stringResource(R.string.quick_settings_settings),
                     onClick = {
                         context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     },
@@ -480,11 +486,11 @@ internal fun QuickSettingsPanel(
                 )
                 QuickSystemButton(
                     icon = Lucide.RefreshCw,
-                    label = "Перезагрузка",
+                    label = stringResource(R.string.quick_settings_reboot),
                     enabled = !isMoving,
                     onClick = {
                         if (isMoving) {
-                            Toast.makeText(context, "Недоступно во время движения", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.quick_settings_unavailable_in_motion), Toast.LENGTH_SHORT).show()
                         } else {
                             showRebootConfirm = true
                         }
@@ -493,11 +499,11 @@ internal fun QuickSettingsPanel(
                 )
                 QuickSystemButton(
                     icon = Lucide.Power,
-                    label = "Выключение",
+                    label = stringResource(R.string.quick_settings_power_off),
                     enabled = !isMoving,
                     onClick = {
                         if (isMoving) {
-                            Toast.makeText(context, "Недоступно во время движения", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.quick_settings_unavailable_in_motion), Toast.LENGTH_SHORT).show()
                         } else {
                             showPowerOffConfirm = true
                         }
@@ -511,8 +517,8 @@ internal fun QuickSettingsPanel(
     if (showRebootConfirm) {
         AlertDialog(
             onDismissRequest = { showRebootConfirm = false },
-            title = { Text(text = "Перезагрузка устройства") },
-            text = { Text(text = "Вы действительно хотите перезагрузить головное устройство?") },
+            title = { Text(text = stringResource(R.string.quick_settings_dialog_reboot_title)) },
+            text = { Text(text = stringResource(R.string.quick_settings_dialog_reboot_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -522,12 +528,12 @@ internal fun QuickSettingsPanel(
                         }
                     },
                 ) {
-                    Text(text = "Перезагрузить", color = MaterialTheme.colorScheme.error)
+                    Text(text = stringResource(R.string.quick_settings_dialog_reboot_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showRebootConfirm = false }) {
-                    Text(text = "Отмена")
+                    Text(text = stringResource(R.string.quick_settings_dialog_cancel))
                 }
             },
         )
@@ -536,8 +542,8 @@ internal fun QuickSettingsPanel(
     if (showPowerOffConfirm) {
         AlertDialog(
             onDismissRequest = { showPowerOffConfirm = false },
-            title = { Text(text = "Выключение устройства") },
-            text = { Text(text = "Вы действительно хотите выключить головное устройство?") },
+            title = { Text(text = stringResource(R.string.quick_settings_dialog_power_title)) },
+            text = { Text(text = stringResource(R.string.quick_settings_dialog_power_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -547,12 +553,12 @@ internal fun QuickSettingsPanel(
                         }
                     },
                 ) {
-                    Text(text = "Выключить", color = MaterialTheme.colorScheme.error)
+                    Text(text = stringResource(R.string.quick_settings_dialog_power_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showPowerOffConfirm = false }) {
-                    Text(text = "Отмена")
+                    Text(text = stringResource(R.string.quick_settings_dialog_cancel))
                 }
             },
         )
@@ -643,13 +649,13 @@ private fun QuickToggleTile(
 
             IconButton(
                 onClick = onOpenSettings,
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 FemtoIcon(
                     imageVector = Lucide.ExternalLink,
-                    contentDescription = "Настройки $title",
+                    contentDescription = stringResource(R.string.quick_settings_tile_settings_desc, title),
                     tint = contentColor.copy(alpha = 0.65f),
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }

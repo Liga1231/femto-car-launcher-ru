@@ -911,7 +911,7 @@ private const val MAPS_ZOOM_LEVEL = 15
 // (Settings -> System -> Privacy policy) and the application's terms of service
 // (Settings -> System -> Terms), which carry the notices Google Maps Platform
 // requires of a Customer Application's terms.
-private const val PRIVACY_POLICY_URL = "https://github.com/seijikohara/femto-car-launcher/blob/main/PRIVACY.md"
+private const val PRIVACY_POLICY_URL = "https://github.com/Liga1231/femto-car-launcher-ru/blob/main/PRIVACY.md"
 private const val TERMS_URL = "https://github.com/seijikohara/femto-car-launcher/blob/main/TERMS.md"
 
 // Google's own Maps Platform terms, linked from the API-key row so the person

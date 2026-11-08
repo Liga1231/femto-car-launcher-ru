@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -42,7 +43,7 @@ import okhttp3.OkHttpClient
 import java.util.Locale
 
 private object NoOpSearchHistoryStore : SearchHistoryStore {
-    override val history: Flow<List<HistoryItem>> = emptyFlow()
+    override val history: Flow<List<HistoryItem>> = flowOf(emptyList())
     override suspend fun add(label: String, target: PlaceTarget) {}
     override suspend fun delete(id: Long) {}
     override suspend fun clear() {}

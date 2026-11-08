@@ -54,10 +54,11 @@
   * Автоматическое переключение дневной и ночной палитры на основе солнечного расписания (рассвет/закат по GPS-координатам).
   * Исправлен баг, при котором ночной режим карты не переключался обратно в дневной.
   * Комплексная синхронизация UI: автоматическая адаптация контрастности виджетов, яркости и подложки карты.
-* 🎵 **Глубокая интеграция с Яндекс Музыкой (быстрый запуск Моей волны в 1 клик с автовозвратом в лаунчер):**
-  * Встроенное меню выбора волн (BottomSheet): «Моя Волна», настроения («Бодрое», «Спокойное», «Радостное»), занятия («В дороге», «Тренировка») и жанры прямо на рабочем столе.
+* 🎵 **Интеграция с Яндекс Музыкой (автомобильное управление «Моей волной»):**
+  * Встроенное быстрое меню (BottomSheet): «Моя Волна», настроения («Бодрое», «Спокойное», «Радостное»), занятия («В дороге», «Тренировка») и жанры прямо с главного экрана.
   * Виджет плеера с отображением обложки альбома в HD, названия трека, прогресс-баром и кнопкой «Любимое» (лайк).
-  * Интерактивная пульсирующая неоновая анимация (Ripple Glow) вокруг кнопки волны при воспроизведении музыки.
+  * Интерактивная пульсирующая анимация (Ripple Glow) вокруг кнопки волны при воспроизведении.
+  * **Как это работает**: локальная и безопасная интеграция через стандартные интерфейсы Android (`MediaBrowserService`, `MediaSessionCompat` и `NotificationListener`) к установленному официальному приложению Яндекс Музыки. Без передачи паролей и токенов.
 * 🎨 **Схемы карты и оформление:**
   * 3 новые сбалансированные схемы карты: *Приглушённая (Muted)*, *Тёплая (Warm)*, *Грифельная (Slate)*.
   * Новые акцентные цвета интерфейса: `GRAPHITE`, `SLATE`, `WARM`.
@@ -98,10 +99,11 @@
   * Automatic day/night style transitions based on astronomical solar calculations (sunrise/sunset by GPS).
   * Fixed upstream bug where nighttime map styling failed to switch back to daytime styling after sunrise.
   * Full UI synchronization: automated adaptation of map colors, card contrast, and backlight at dusk and dawn.
-* 🎵 **Deep Yandex Music Integration (1-Click Wave Launch with Auto-Return):**
-  * In-launcher Vibe & Mood bottom sheet selector: "My Vibe", moods (Energetic, Calm, Cheerful), activities (Driving, Workout), and music genres without opening the external app.
+* 🎵 **In-Place Yandex Music Control ("My Vibe" 1-Click Automotive Integration):**
+  * In-launcher Vibe & Mood bottom sheet selector: "My Vibe", moods (Energetic, Calm, Cheerful), activities (Driving, Workout), and music genres without leaving the dashboard.
   * Home screen media player card with HD album art, track/artist metadata, seekable progress bar, and instant "Favorite" (like) button.
   * Pulsating Ripple Glow neon ring animation around the vibe button synced with music playback.
+  * **How it works**: Local, privacy-first integration operating via Android's standard `MediaBrowserService`, `MediaSessionCompat`, and `NotificationListener` communicating with the installed official Yandex Music app. No credentials or tokens required.
 * 🎨 **Custom Map Schemes & Visual Themes:**
   * 3 new balanced map color schemes: *Muted* (low eye-strain), *Warm* (gentle automotive lighting), and *Slate* (premium graphite dark tone).
   * New cohesive accent colors: `GRAPHITE`, `SLATE`, and `WARM`.
@@ -186,6 +188,13 @@ The dashboard layout does not change with vehicle motion, and the launcher has n
 - The app uses notification access, when you grant it, only to read and control the active media session for the now-playing card.
 - An in-app diagnostics report (**Settings → System → Diagnostics**) summarizes device and runtime facts for troubleshooting. **Settings → System → Open source licenses** lists every bundled third-party component.
 - The app's own terms are in the [Terms of Service](TERMS.md), also reachable in the app from **Settings → System → Terms**.
+
+
+## 🛠️ Скрипты и инструменты / Tools
+
+В репозитории в каталоге [`tools/`](tools/README.md) содержатся готовые утилиты:
+- 🗺️ **[tools/valhalla/](tools/valhalla/)**: Скрипты сборки оффлайн-тайлов навигации Valhalla (`build_tiles.py`) из любых OSM `.pbf` дампов с автоматической конвертацией в формат `.tar` для головных устройств.
+- 🔋 **[tools/battery/](tools/battery/)**: Скрипты аппаратного контроля уровня заряда батареи (`battery_limiter.sh`, `set_policy.sh`) для предотвращения вздутия аккумулятора при непрерывном автомобильном питании.
 
 ## Installation
 

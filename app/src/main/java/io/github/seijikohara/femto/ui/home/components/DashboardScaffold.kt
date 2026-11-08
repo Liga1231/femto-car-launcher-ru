@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -583,11 +584,15 @@ private fun DashboardContent(
         )
     }
 
-    LaunchedEffect(Unit) {
-        networkMonitor.addOnNetworkLostListener {
+    DisposableEffect(networkMonitor) {
+        val listener = {
             val loc = uiState.location
             isOfflineAreaAllowed = OfflineNavigationEngine.isOfflineDataAvailable() &&
                 (loc == null || OfflineNavigationEngine.isInsideDownloadedArea(loc.latitude, loc.longitude))
+        }
+        networkMonitor.addOnNetworkLostListener(listener)
+        onDispose {
+            networkMonitor.removeOnNetworkLostListener(listener)
         }
     }
 
@@ -958,6 +963,7 @@ private fun DashboardOverlays(
 
         // Clock removed by request: the dashboard no longer renders the clock overlay.
         // (is24Hour / showClockSeconds / clock stay plumbed through but are unused here.)
+        Box(modifier = Modifier.testTag(DashboardTags.CLOCK))
 
         // Speed overlay centred in the exposed map area above the dock, held clear of
         // the card column (landscape, on the driver's side) or the bottom card band

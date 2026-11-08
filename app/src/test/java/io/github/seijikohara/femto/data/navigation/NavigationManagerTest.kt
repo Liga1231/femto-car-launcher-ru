@@ -63,6 +63,8 @@ class NavigationManagerTest {
                 routingApi = routingApi,
                 destinationGeocoder = geocoder,
                 scope = testScope,
+                defaultDispatcher = testDispatcher,
+                ioDispatcher = testDispatcher,
             )
 
             val origin = Location("gps").apply {
@@ -77,6 +79,7 @@ class NavigationManagerTest {
             )
 
             testScope.advanceUntilIdle()
+            manager.confirmRoute()
 
             val state = manager.state.value
             assertIs<NavigationState.Active>(state)
@@ -111,6 +114,8 @@ class NavigationManagerTest {
                 routingApi = routingApi,
                 destinationGeocoder = geocoder,
                 scope = testScope,
+                defaultDispatcher = testDispatcher,
+                ioDispatcher = testDispatcher,
             )
 
             val origin = Location("gps").apply {
@@ -124,6 +129,7 @@ class NavigationManagerTest {
                 label = "Target",
             )
             testScope.advanceUntilIdle()
+            manager.confirmRoute()
 
             // Move car to maneuver coordinate
             val nearManeuver = Location("gps").apply {

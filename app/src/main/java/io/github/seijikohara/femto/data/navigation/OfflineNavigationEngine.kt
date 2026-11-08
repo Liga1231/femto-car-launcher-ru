@@ -228,17 +228,14 @@ internal object OfflineNavigationEngine {
     private fun getSearchDatabase(): SQLiteDatabase? {
         if (searchDatabase?.isOpen == true) return searchDatabase
         val ctx = appContext
-        val candidates = mutableListOf(
-            File("/sdcard/Femto/maps/geocoding.db"),
-            File(Environment.getExternalStorageDirectory(), "Femto/maps/geocoding.db"),
-            File("/sdcard/Android/data/io.github.seijikohara.femto/files/maps/geocoding.db"),
-        )
+        val candidates = mutableListOf<File>()
         if (ctx != null) {
-            ctx.getExternalFilesDir("maps")?.let {
-                candidates.add(File(it, "geocoding.db"))
-            }
+            ctx.getExternalFilesDir("maps")?.let { candidates.add(File(it, "geocoding.db")) }
             candidates.add(File(ctx.filesDir, "geocoding.db"))
+            candidates.add(File("/sdcard/Android/data/${ctx.packageName}/files/maps/geocoding.db"))
         }
+        candidates.add(File("/sdcard/Femto/maps/geocoding.db"))
+        candidates.add(File(Environment.getExternalStorageDirectory(), "Femto/maps/geocoding.db"))
         for (f in candidates) {
             if (f.exists() && f.canRead() && f.length() > 0) {
                 try {
@@ -618,6 +615,7 @@ internal object OfflineNavigationEngine {
                                     refLon.toString(),
                                     refLon.toString(),
                                     ftsQuery,
+                                    houseNum,
                                     houseNum,
                                     houseNum,
                                     maxResults.toString()

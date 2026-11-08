@@ -105,6 +105,10 @@ class SettingsFactsCompletenessTest {
             "googleMapsTraffic" to "Google Maps traffic",
             "googleMapsApiKey" to "Google Maps key",
             "googleMapsMapId" to "Google Maps map ID",
+            "musicCardHeight" to "Music card height",
+            "themeScheduleEnabled" to "Theme schedule",
+            "themeScheduleLightHour" to "Theme schedule",
+            "themeScheduleDarkHour" to "Theme schedule",
         )
 
     @Test

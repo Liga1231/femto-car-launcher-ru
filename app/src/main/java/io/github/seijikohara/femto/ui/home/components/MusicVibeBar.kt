@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import io.github.seijikohara.femto.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -77,7 +78,7 @@ internal fun MusicVibeBar(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     )
                     Text(
-                        text = "Офлайн",
+                        text = stringResource(R.string.music_vibe_offline),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     )
@@ -91,7 +92,7 @@ internal fun MusicVibeBar(
                     if (isOnline) {
                         onOpenSheet()
                     } else {
-                        Toast.makeText(context, "«Моя Волна» работает только с интернетом", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.music_vibe_needs_internet), Toast.LENGTH_SHORT).show()
                     }
                 },
                 shape = CircleShape,
@@ -162,7 +163,7 @@ internal fun MusicVibeBar(
                             if (isOnline) {
                                 onSelectVibe(vibe)
                             } else {
-                                Toast.makeText(context, "«Моя Волна» работает только с интернетом", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.music_vibe_needs_internet), Toast.LENGTH_SHORT).show()
                             }
                         }
                         .padding(horizontal = 12.dp, vertical = 6.dp),

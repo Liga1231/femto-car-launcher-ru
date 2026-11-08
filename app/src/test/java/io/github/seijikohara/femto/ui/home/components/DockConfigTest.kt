@@ -15,7 +15,7 @@ class DockConfigTest {
     @Test
     fun `defaults to every id in its enum's declared order with nothing hidden`() {
         val config = DockConfig()
-        assertEquals(DockNavId.entries, config.visibleNav)
+        assertEquals(DockNavId.entries - io.github.seijikohara.femto.data.dock.DEFAULT_NAV_HIDDEN, config.visibleNav)
         assertEquals(DockStatusId.entries, config.visibleStatus)
     }
 

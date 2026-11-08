@@ -122,7 +122,7 @@ spotless {
 android {
     namespace = "io.github.seijikohara.femto"
     // compileSdk 37: androidx.core(-ktx) 1.19.0 requires compiling against API 37+.
-    // minSdk stays 33 (Android 13) and targetSdk stays 36 — only the compile
+    // minSdk is 29 (Android 10) and targetSdk stays 36 — only the compile
     // target advances, not the supported-device floor or the runtime opt-in.
     compileSdk {
         version = release(37)
@@ -169,10 +169,8 @@ android {
         // signature check against the downloaded release APK.
         buildConfigField("boolean", "UPDATE_CHECK_ENABLED", "false")
 
-        // The native renderer ships only where a Vulkan driver realistically
-        // exists: 64-bit ARM devices and the x86_64 emulator. Any other ABI
-        // (old 32-bit AI boxes) simply has no libtripflyover.so, and the app
-        // falls back to the 2D Compose renderer — never a crash.
+        // The native renderer and Valhalla routing engine ship for 64-bit/32-bit
+        // ARM architectures as well as the x86_64 emulator.
         ndk {
             abiFilters += listOf(
                 "arm64-v8a",
@@ -280,7 +278,17 @@ android {
             // The screenshot-catalog generator (DashboardCatalogTest) renders
             // 960 images; it belongs to the generateCatalog task below, never to
             // `test` / verifyRoborazziStableDebug.
-            all { it.useJUnit { excludeCategories(catalogCategory) } }
+            all {
+                it.useJUnit { excludeCategories(catalogCategory) }
+                it.jvmArgs(
+                    "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                    "--add-opens=java.base/java.io=ALL-UNNAMED",
+                    "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+                    "--add-opens=java.base/java.util=ALL-UNNAMED",
+                    "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+                    "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED"
+                )
+            }
         }
     }
     lint {

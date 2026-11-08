@@ -83,7 +83,7 @@ internal fun MusicMoodSheet(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                 ) {
                     Text(
-                        text = "Нет подключения к интернету. «Моя Волна» работает только онлайн.",
+                        text = stringResource(R.string.music_mood_no_internet),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),

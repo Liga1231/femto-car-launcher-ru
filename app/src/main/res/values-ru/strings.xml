@@ -166,7 +166,7 @@
     <!-- Режим правки дока -->
     <string name="edit_done">Готово</string>
     <string name="dock_hide">Скрыть</string>
-    <string name="dock_edit">Изменить dock</string>
+    <string name="dock_edit">Изменить док</string>
     <string name="dock_move_up">Переместить вверх</string>
     <string name="dock_move_down">Переместить вниз</string>
     <string name="update_available">Доступно обновление</string>
@@ -576,8 +576,8 @@
     <string name="settings_reset_section">Сбросить этот раздел</string>
     <string name="settings_reset_section_confirm_title">Сбросить «%1$s»?</string>
     <string name="settings_reset_section_confirm_message">Это вернёт все настройки этого раздела к значениям по умолчанию.</string>
-    <string name="settings_reset_dock">Сбросить dock</string>
-    <string name="settings_reset_dock_confirm_title">Сбросить dock?</string>
+    <string name="settings_reset_dock">Сбросить док</string>
+    <string name="settings_reset_dock_confirm_title">Сбросить док?</string>
     <string name="settings_reset_dock_confirm_message">Это вернёт порядок и видимость кнопок дока, а также порядок и видимость статус-иконок, к значениям по умолчанию.</string>
 
     <!-- Лицензии -->
@@ -628,4 +628,71 @@
     <string name="vibe_popular">Популярное</string>
     <string name="music_vibes_title">Моя волна</string>
     <string name="music_source_yandex">Яндекс Музыка</string>
+    <!-- Quick Settings Panel -->
+    <string name="quick_settings_title">БЫСТРЫЕ НАСТРОЙКИ</string>
+    <string name="quick_settings_close">Закрыть</string>
+    <string name="quick_settings_all_settings">Все настройки системы</string>
+    <string name="quick_settings_status_connected">Подключено</string>
+    <string name="quick_settings_status_enabled">Включён</string>
+    <string name="quick_settings_status_disabled">Отключён</string>
+    <string name="quick_settings_airplane_mode">Режим полёта</string>
+    <string name="quick_settings_mobile_data">Мобильные данные</string>
+    <string name="quick_settings_hotspot">Точка доступа</string>
+    <string name="quick_settings_hotspot_subtitle">Раздача Wi-Fi</string>
+    <string name="quick_settings_location">Геолокация (GPS)</string>
+    <string name="quick_settings_gps_fixed">Включён • Фикс (%1$d спутн.)</string>
+    <string name="quick_settings_gps_searching">Включён • Поиск (%1$d спутн.)</string>
+    <string name="quick_settings_volume">Громкость</string>
+    <string name="quick_settings_media_volume">Громкость медиа</string>
+    <string name="quick_settings_brightness">Яркость</string>
+    <string name="quick_settings_screen_brightness">Яркость экрана</string>
+    <string name="quick_settings_settings">Настройки</string>
+    <string name="quick_settings_reboot">Перезагрузка</string>
+    <string name="quick_settings_power_off">Выключение</string>
+    <string name="quick_settings_unavailable_in_motion">Недоступно во время движения</string>
+    <string name="quick_settings_dialog_reboot_title">Перезагрузка устройства</string>
+    <string name="quick_settings_dialog_reboot_message">Вы действительно хотите перезагрузить головное устройство?</string>
+    <string name="quick_settings_dialog_reboot_confirm">Перезагрузить</string>
+    <string name="quick_settings_dialog_cancel">Отмена</string>
+    <string name="quick_settings_dialog_power_title">Выключение устройства</string>
+    <string name="quick_settings_dialog_power_message">Вы действительно хотите выключить головное устройство?</string>
+    <string name="quick_settings_dialog_power_confirm">Выключить</string>
+    <string name="quick_settings_tile_settings_desc">Настройки %1$s</string>
+
+    <!-- Navigation HUD -->
+    <string name="nav_hud_end_route">Завершить маршрут</string>
+    <string name="nav_hud_cancel_navigation">Отмена навигации</string>
+    <string name="nav_hud_remaining_prefix">Осталось %1$s</string>
+    <string name="nav_hud_eta_prefix">Прибытие %1$s</string>
+    <string name="nav_hud_calculating">Маршрут…</string>
+    <string name="nav_hud_arrived">Вы прибыли!</string>
+    <string name="nav_hud_route_error">Ошибка маршрута</string>
+    <string name="nav_hud_distance_now">Сейчас</string>
+    <string name="nav_hud_distance_meters">%1$d м</string>
+    <string name="nav_hud_distance_kilometers">%.1f км</string>
+    <string name="nav_hud_distance_kilometers_int">%1$d км</string>
+    <string name="nav_hud_duration_less_minute">&lt; 1 мин</string>
+    <string name="nav_hud_duration_hours_minutes">%1$d ч %2$d мин</string>
+    <string name="nav_hud_duration_minutes">%1$d мин</string>
+    <string name="nav_hud_select_route">Выберите маршрут</string>
+    <string name="nav_hud_start">Поехали</string>
+
+    <!-- Destination Panel -->
+    <string name="destination_no_internet_banner">Нет подключения к интернету. Поиск адресов и навигация доступны только онлайн.</string>
+    <string name="destination_search_blocked_title">Поиск заблокирован без интернета</string>
+    <string name="destination_search_blocked_desc">Поиск адресов и расчёт маршрутов работают в онлайн-режиме. Подключите интернет для поиска мест.</string>
+    <string name="destination_search_blocked_hint">Поиск заблокирован (нет интернета)</string>
+    <string name="destination_clear_query">Очистить</string>
+    <string name="destination_navigate_needs_internet">Требуется интернет</string>
+    <string name="destination_recent_route_default">Недавний маршрут</string>
+    <string name="destination_suggestions_header">ПРЕДЛОЖЕНИЯ АДРЕСОВ</string>
+    <string name="destination_no_suggestions">Адреса не найдены</string>
+    <string name="destination_quick_streets">Быстрый выбор улицы:</string>
+    <string name="destination_target_point_default">Пункт назначения</string>
+
+    <!-- Music and Dock -->
+    <string name="music_vibe_offline">Офлайн</string>
+    <string name="music_vibe_needs_internet">«Моя Волна» работает только с интернетом</string>
+    <string name="music_mood_no_internet">Нет подключения к интернету. «Моя Волна» работает только онлайн.</string>
+    <string name="status_gps_off">ВЫКЛ</string>
 </resources>

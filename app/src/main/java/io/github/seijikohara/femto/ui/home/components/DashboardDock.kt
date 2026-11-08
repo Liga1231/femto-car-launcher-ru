@@ -127,7 +127,7 @@ private val CompactDockExtentBase: Dp = 700.dp
 private const val TUNED_VISIBLE_NAV_COUNT = 7
 
 private fun compactDockExtent(visibleNavCount: Int): Dp =
-    CompactDockExtentBase + FemtoDimens.MinTouchTarget * (visibleNavCount - TUNED_VISIBLE_NAV_COUNT)
+    CompactDockExtentBase + (FemtoDimens.MinTouchTarget + FemtoDimens.DockButtonMargin * 2) * (visibleNavCount - TUNED_VISIBLE_NAV_COUNT)
 
 // Width the horizontal bar's fixed-margin (pill) fit test reserves for the status
 // side when the status cluster shows: the nav/status divider plus the read-only

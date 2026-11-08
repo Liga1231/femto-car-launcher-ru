@@ -1047,7 +1047,9 @@ internal class LiveMapWebViewClient(
     ): WebResourceResponse? {
         val path = request.url.path ?: ""
 
-        if (path.contains("/styles/")) {
+        val host = request.url.host ?: ""
+        val isOpenFreeMap = host == "tiles.openfreemap.org" || host.endsWith(".openfreemap.org") || host.isEmpty()
+        if (isOpenFreeMap && path.contains("/styles/")) {
             val styleName = path.substringAfterLast('/').substringBefore('?')
             if (isOnline()) {
                 try {
@@ -1233,7 +1235,7 @@ internal class LiveMapWebViewClient(
                 )
             }
 
-            val tileMatch = Regex("""^.*/(?:planet|tiles|offline-tiles/tiles)/(\d+)/(\d+)/(\d+)\.pbf$""").find(path) ?: Regex("""^.*/(\d+)/(\d+)/(\d+)\.pbf$""").find(path)
+            val tileMatch = TILE_PBF_PATTERN_1.find(path) ?: TILE_PBF_PATTERN_2.find(path)
             if (tileMatch != null) {
                 val (z, x, y) = tileMatch.destructured
                 val pbf = offlineTileProvider.getTile(z.toInt(), x.toInt(), y.toInt())
@@ -1505,6 +1507,8 @@ private fun LiveMapNoticePreview() {
 }
 
 private const val TAG = "WebMapView"
+private val TILE_PBF_PATTERN_1 = Regex("""^.*/(?:planet|tiles|offline-tiles/tiles)/(\d+)/(\d+)/(\d+)\.pbf$""")
+private val TILE_PBF_PATTERN_2 = Regex("""^.*/(\d+)/(\d+)/(\d+)\.pbf$""")
 
 // Auto-retry backoff for failed live pages: 5 s, 10 s, 20 s, 40 s, then the
 // cap for every later attempt. The cap bounds how long a driver waits for the
