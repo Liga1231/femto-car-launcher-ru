@@ -82,8 +82,10 @@ import io.github.seijikohara.femto.ui.theme.FemtoIcon
 import io.github.seijikohara.femto.ui.theme.LocalFemtoDarkTheme
 import io.github.seijikohara.femto.ui.theme.eyebrow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * Control center / Quick settings panel, opened by tapping the dock's status cluster
@@ -143,6 +145,7 @@ internal fun QuickSettingsPanel(
         }.getOrDefault(128)
         mutableFloatStateOf(b / 255f)
     }
+    var brightnessJob by remember { mutableStateOf<Job?>(null) }
 
     // Sync state periodically while panel is open
     LaunchedEffect(Unit) {
@@ -451,13 +454,29 @@ internal fun QuickSettingsPanel(
                                 value = currentBrightness,
                                 onValueChange = {
                                     currentBrightness = it
-                                    val bInt = (it * 255).toInt().coerceIn(1, 255)
-                                    runCatching {
-                                        Settings.System.putInt(
-                                            context.contentResolver,
-                                            Settings.System.SCREEN_BRIGHTNESS,
-                                            bInt,
-                                        )
+                                    context.findActivity()?.window?.let { window ->
+                                        val lp = window.attributes
+                                        lp.screenBrightness = it
+                                        window.attributes = lp
+                                    }
+                                    brightnessJob?.cancel()
+                                    brightnessJob = coroutineScope.launch(Dispatchers.IO) {
+                                        delay(150L)
+                                        val bInt = (it * 255).roundToInt().coerceIn(10, 255)
+                                        try {
+                                            Settings.System.putInt(
+                                                context.contentResolver,
+                                                Settings.System.SCREEN_BRIGHTNESS_MODE,
+                                                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
+                                            )
+                                            Settings.System.putInt(
+                                                context.contentResolver,
+                                                Settings.System.SCREEN_BRIGHTNESS,
+                                                bInt,
+                                            )
+                                        } catch (_: Exception) {
+                                            RootShell.run("settings put system screen_brightness $bInt")
+                                        }
                                     }
                                 },
                                 valueRange = 0.05f..1f,
@@ -523,8 +542,12 @@ internal fun QuickSettingsPanel(
                 TextButton(
                     onClick = {
                         showRebootConfirm = false
-                        coroutineScope.launch {
-                            RootShell.reboot()
+                        if (isMoving) {
+                            Toast.makeText(context, context.getString(R.string.quick_settings_unavailable_in_motion), Toast.LENGTH_SHORT).show()
+                        } else {
+                            coroutineScope.launch {
+                                RootShell.reboot()
+                            }
                         }
                     },
                 ) {
@@ -548,8 +571,12 @@ internal fun QuickSettingsPanel(
                 TextButton(
                     onClick = {
                         showPowerOffConfirm = false
-                        coroutineScope.launch {
-                            RootShell.powerOff()
+                        if (isMoving) {
+                            Toast.makeText(context, context.getString(R.string.quick_settings_unavailable_in_motion), Toast.LENGTH_SHORT).show()
+                        } else {
+                            coroutineScope.launch {
+                                RootShell.powerOff()
+                            }
                         }
                     },
                 ) {

@@ -146,12 +146,12 @@ internal object ValhallaNavigationEngine {
 
             val t0 = System.currentTimeMillis()
             val reqStr = req.toString()
-            Log.i(TAG, "Valhalla route req: $reqStr")
+            Log.d(TAG, "Valhalla route req: $reqStr")
             val responseJsonStr = synchronized(initLock) {
                 bridge.route(handle, reqStr)
             }
             val dt = System.currentTimeMillis() - t0
-            Log.i(TAG, "Valhalla route response ($dt ms): $responseJsonStr")
+            Log.d(TAG, "Valhalla route response ($dt ms): $responseJsonStr")
 
             parseValhallaResponse(responseJsonStr, destLat, destLon, destinationLabel)
         } catch (e: Exception) {

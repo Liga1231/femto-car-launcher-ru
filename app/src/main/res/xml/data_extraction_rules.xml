@@ -13,10 +13,15 @@
         <exclude domain="file" path="datastore/location_preferences.preferences_pb" />
         <!-- The recorded trip track (1 Hz position, speed, bearing, altitude; recording is on by default and the history is kept for 90 days) is the most sensitive data the app holds, and the database domain is backed up by default — so without this the history would be copied to the user's Google account, contradicting what Settings and the privacy policy both promise. -->
         <exclude domain="database" path="track_log.db" />
+        <exclude domain="database" path="track_log.db-wal" />
+        <exclude domain="database" path="track_log.db-shm" />
         <!-- update_preferences is the updater's bookkeeping about this install, none of it portable: a restored pending-install record would make a fresh install announce an update it never made, a restored check time would hold off the first automatic check for up to a day, and a restored offer describes the old install's build. -->
         <exclude domain="file" path="datastore/update_preferences.preferences_pb" />
         <!-- saved_places holds the destination panel's saved places: labels with addresses or coordinates the user chose to keep. That is location data, and the privacy policy promises it stays on the device. -->
         <exclude domain="file" path="datastore/saved_places.preferences_pb" />
+        <exclude domain="file" path="datastore/search_history.preferences_pb" />
+        <exclude domain="file" path="google_fonts" />
+        <exclude domain="file" path="google_fonts_catalog.json" />
         <!-- video_preferences holds the picked video file, whose read grant belongs to this install: a restored record would name a file the new install cannot open. It also holds the "Hide the picture while driving" choice, which a new install starts from its default (on) rather than inherit switched off. -->
         <exclude domain="file" path="datastore/video_preferences.preferences_pb" />
     </cloud-backup>
@@ -24,10 +29,15 @@
         <exclude domain="file" path="datastore/location_preferences.preferences_pb" />
         <!-- Excluded from device transfer as well: the track is tied to the vehicle it was recorded in, and a transfer is not a reason to move a position history onto different hardware. -->
         <exclude domain="database" path="track_log.db" />
+        <exclude domain="database" path="track_log.db-wal" />
+        <exclude domain="database" path="track_log.db-shm" />
         <!-- The updater's bookkeeping describes this install, not the new device's (see cloud-backup). -->
         <exclude domain="file" path="datastore/update_preferences.preferences_pb" />
         <!-- Saved places stay on this device (see cloud-backup). -->
         <exclude domain="file" path="datastore/saved_places.preferences_pb" />
+        <exclude domain="file" path="datastore/search_history.preferences_pb" />
+        <exclude domain="file" path="google_fonts" />
+        <exclude domain="file" path="google_fonts_catalog.json" />
         <!-- The picked file's read grant does not move with the data, and the picture gate starts on (see cloud-backup). -->
         <exclude domain="file" path="datastore/video_preferences.preferences_pb" />
     </device-transfer>

@@ -58,7 +58,7 @@ declare global {
         onHostResume: () => void;
         setFollow: (follow: boolean) => void;
         setNorthUp: (enabled: boolean) => void;
-        setRoute: (geojson: string | null) => void;
+        setRoute: (geojson: string | null, isDark?: boolean) => void;
         clearRoute: () => void;
     }
 }
@@ -265,6 +265,7 @@ export interface PendingBridgeCalls {
     setNorthUp: boolean | null;
     onHostResume: boolean;
     setRoute?: string | null;
+    setRouteDark?: boolean;
 }
 
 export function installPendingStubs(): PendingBridgeCalls {
@@ -299,8 +300,9 @@ export function installPendingStubs(): PendingBridgeCalls {
     window.onHostResume = () => {
         pending.onHostResume = true;
     };
-    window.setRoute = (geojson) => {
+    window.setRoute = (geojson, isDark) => {
         pending.setRoute = geojson;
+        pending.setRouteDark = isDark;
     };
     window.clearRoute = () => {
         pending.setRoute = null;

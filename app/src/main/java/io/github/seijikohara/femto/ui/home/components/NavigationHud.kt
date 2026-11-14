@@ -517,7 +517,7 @@ private fun maneuverIcon(
 private fun formatDistance(meters: Double): String =
     when {
         meters < 50 -> stringResource(R.string.nav_hud_distance_now)
-        meters < 1000 -> stringResource(R.string.nav_hud_distance_meters, ((meters + 5) / 10).toInt() * 10)
+        meters < 995 -> stringResource(R.string.nav_hud_distance_meters, ((meters + 5) / 10).toInt() * 10)
         meters < 10000 -> stringResource(R.string.nav_hud_distance_kilometers, meters / 1000.0)
         else -> stringResource(R.string.nav_hud_distance_kilometers_int, (meters / 1000.0).toInt())
     }

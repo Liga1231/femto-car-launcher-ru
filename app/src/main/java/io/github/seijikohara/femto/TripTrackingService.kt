@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -50,6 +51,8 @@ import kotlinx.coroutines.launch
  * "while in use" grant plus the `location` service type — never the heavily
  * gated `ACCESS_BACKGROUND_LOCATION`.
  */
+private const val TAG = "TripTrackingService"
+
 internal class TripTrackingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -75,13 +78,19 @@ internal class TripTrackingService : Service() {
             // collector refreshes it within the first sample window). The seed
             // unit follows the locale until the persisted choice loads.
             val seed = TripState.Initial.tripReadout(speedUnitFor())
-            ServiceCompat.startForeground(
-                this,
-                NOTIFICATION_ID,
-                buildNotification(seed),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
-            )
-            collectTripMetrics()
+            try {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    buildNotification(seed),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+                )
+                collectTripMetrics()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to start foreground service", e)
+                stopSelf()
+                return START_NOT_STICKY
+            }
         }
         // Do not let the OS resurrect a killed service in the background: that
         // would attempt a foreground-service start from the background and throw.

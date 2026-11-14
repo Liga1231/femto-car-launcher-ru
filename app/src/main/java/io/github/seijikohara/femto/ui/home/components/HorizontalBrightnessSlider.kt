@@ -46,7 +46,10 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Sun
 import dev.chrisbanes.haze.HazeState
 import io.github.seijikohara.femto.ui.theme.FemtoIcon
+import io.github.seijikohara.femto.data.system.RootShell
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -70,7 +73,9 @@ internal fun HorizontalBrightnessSlider(
         mutableFloatStateOf(initial.coerceIn(0.05f, 1f))
     }
 
-    fun applyBrightness(newFraction: Float) {
+    var brightnessSyncJob by remember { androidx.compose.runtime.mutableStateOf<Job?>(null) }
+
+    fun applyBrightness(newFraction: Float, debounce: Boolean = true) {
         val clamped = newFraction.coerceIn(0.05f, 1f)
         brightness = clamped
 
@@ -80,7 +85,11 @@ internal fun HorizontalBrightnessSlider(
             window.attributes = lp
         }
 
-        scope.launch(Dispatchers.IO) {
+        brightnessSyncJob?.cancel()
+        brightnessSyncJob = scope.launch(Dispatchers.IO) {
+            if (debounce) {
+                delay(150L)
+            }
             val brightnessInt = (clamped * 255).roundToInt().coerceIn(10, 255)
             try {
                 Settings.System.putInt(
@@ -94,9 +103,7 @@ internal fun HorizontalBrightnessSlider(
                     brightnessInt,
                 )
             } catch (_: Exception) {
-                try {
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put system screen_brightness $brightnessInt"))
-                } catch (_: Exception) {}
+                RootShell.run("settings put system screen_brightness $brightnessInt")
             }
         }
     }
@@ -130,7 +137,7 @@ internal fun HorizontalBrightnessSlider(
                                     brightness < 0.80f -> 1.0f
                                     else -> 0.25f
                                 }
-                            applyBrightness(next)
+                            applyBrightness(next, debounce = false)
                             onInteraction()
                         },
                 contentAlignment = Alignment.Center,
@@ -214,7 +221,7 @@ internal fun HorizontalBrightnessSlider(
     }
 }
 
-private tailrec fun Context.findActivity(): Activity? =
+internal tailrec fun Context.findActivity(): Activity? =
     when (this) {
         is Activity -> this
         is ContextWrapper -> baseContext.findActivity()

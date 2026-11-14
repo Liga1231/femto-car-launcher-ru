@@ -64,6 +64,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -171,7 +174,6 @@ internal class HomeViewModel(
             tripStateFlow.catchAsDefault(TAG, "trip state", HomeUiState.Initial.tripState),
             navigationManager?.state ?: flowOf(NavigationState.Idle),
         ) { core, calendar, systemStatus, tripState, navState ->
-            navigationManager?.onNetworkAvailabilityChanged(systemStatus.isOnline)
             HomeUiState(
                 location = core.location,
                 address = core.address,
@@ -184,6 +186,19 @@ internal class HomeViewModel(
                 navigationState = navState,
             )
         }.stateIn(viewModelScope, WhileUiSubscribed, HomeUiState.Initial)
+
+    init {
+        if (navigationManager != null) {
+            viewModelScope.launch {
+                onlineFlow
+                    .catchAsDefault(TAG, "navigation network", ASSUMED_ONLINE)
+                    .distinctUntilChanged()
+                    .collect { isOnline ->
+                        navigationManager.onNetworkAvailabilityChanged(isOnline)
+                    }
+            }
+        }
+    }
 
     /**
      * Whether the default network has validated internet, for the live map's

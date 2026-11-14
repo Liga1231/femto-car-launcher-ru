@@ -129,7 +129,11 @@ internal class TripVizViewModel(
             val target =
                 _uiState.value.selectedTripId?.takeIf { id -> trips.any { it.tripId == id } }
                     ?: trips.firstOrNull()?.tripId
-            if (target != null) select(target)
+            if (target != null) {
+                select(target)
+            } else {
+                _uiState.update { it.copy(selectedTripId = null, selection = null) }
+            }
         }
 
     private fun select(tripId: Long) =

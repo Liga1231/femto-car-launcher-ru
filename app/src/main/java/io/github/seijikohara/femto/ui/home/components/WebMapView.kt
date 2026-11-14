@@ -156,6 +156,12 @@ internal fun WebMapView(
 ) {
     val context = LocalContext.current
     val offlineTileProvider = remember { OfflineTileProvider(context) }
+    DisposableEffect(offlineTileProvider) {
+        onDispose {
+            offlineTileProvider.close()
+        }
+    }
+    val currentOnline by rememberUpdatedState(online)
     // The bridge object below is registered once per WebView instance and would
     // otherwise capture the first composition's lambdas forever.
     val currentOnFollowChange by rememberUpdatedState(onFollowChange)
@@ -595,7 +601,7 @@ internal fun WebMapView(
                         context = context,
                         assetLoader = assetLoader,
                         offlineTileProvider = offlineTileProvider,
-                        isOnline = { online },
+                        isOnline = { currentOnline },
                         onPageLoaded = { pageReady.value = true },
                         onRendererDeath = { view, crashed ->
                             val description = if (crashed) "renderer crashed" else "renderer killed by the system"
@@ -836,11 +842,11 @@ internal fun WebMapView(
         )
     }
 
-    LaunchedEffect(webView, pageReady.value, navigationRouteGeoJson) {
+    LaunchedEffect(webView, pageReady.value, navigationRouteGeoJson, isDark) {
         if (!pageReady.value) return@LaunchedEffect
         if (!navigationRouteGeoJson.isNullOrBlank()) {
             val escaped = navigationRouteGeoJson.replace("\\", "\\\\").replace("'", "\\'")
-            webView.evaluateJavascript("window.setRoute && setRoute('$escaped')", null)
+            webView.evaluateJavascript("window.setRoute && setRoute('$escaped', $isDark)", null)
         } else {
             webView.evaluateJavascript("window.clearRoute && clearRoute()", null)
         }

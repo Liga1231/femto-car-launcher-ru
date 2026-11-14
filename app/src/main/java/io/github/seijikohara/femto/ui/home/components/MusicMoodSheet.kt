@@ -147,7 +147,7 @@ internal fun MusicMoodSheet(
                 items(MusicVibes.ALL, key = { it.id }) { vibe ->
                     val title = stringResource(vibe.titleRes)
                     val isActive =
-                        currentVibeTitle != null &&
+                        !currentVibeTitle.isNullOrBlank() &&
                             (
                                 currentVibeTitle.equals(vibe.titleRu, ignoreCase = true) ||
                                     currentVibeTitle.equals(title, ignoreCase = true) ||

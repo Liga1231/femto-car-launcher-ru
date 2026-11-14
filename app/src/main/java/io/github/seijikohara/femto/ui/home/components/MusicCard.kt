@@ -286,29 +286,25 @@ private fun PlayingState(
             label = "artScale",
         )
 
-        val infiniteTransition = rememberInfiniteTransition(label = "ambientGlow")
-        val pulseScale by infiniteTransition.animateFloat(
-            initialValue = 1.0f,
-            targetValue = 1.08f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-            label = "pulseScale",
-        )
-        val pulseAlpha by infiniteTransition.animateFloat(
-            initialValue = 0.40f,
-            targetValue = 0.75f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-            label = "pulseAlpha",
-        )
+        val pulseAlpha =
+            if (isPlaying) {
+                val infiniteTransition = rememberInfiniteTransition(label = "ambientGlow")
+                val alpha by infiniteTransition.animateFloat(
+                    initialValue = 0.40f,
+                    targetValue = 0.75f,
+                    animationSpec =
+                        infiniteRepeatable(
+                            animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                    label = "pulseAlpha",
+                )
+                alpha
+            } else {
+                0f
+            }
         val ambientGlowActiveAlpha by animateFloatAsState(
-            targetValue = if (isPlaying) pulseAlpha else 0f,
+            targetValue = pulseAlpha,
             animationSpec = tween(durationMillis = 400),
             label = "ambientGlowActiveAlpha",
         )
@@ -321,7 +317,7 @@ private fun PlayingState(
             skipDirection = 1
         }
 
-        BoxWithConstraints(
+        Box(
             modifier =
                 if (fillHeight) {
                     Modifier

@@ -211,6 +211,9 @@ internal object OfflineNavigationEngine {
     @Volatile
     private var lastKnownUserLon: Double? = null
 
+    val userLat: Double? get() = lastKnownUserLat
+    val userLon: Double? get() = lastKnownUserLon
+
     fun updateUserLocation(lat: Double, lon: Double) {
         if (!lat.isNaN() && !lon.isNaN() && lat != 0.0 && lon != 0.0) {
             lastKnownUserLat = lat
@@ -1330,7 +1333,7 @@ internal object OfflineNavigationEngine {
     }
 
     private fun computeTurnAngle(b1: Double, b2: Double): Double {
-        return ((b2 - b1 + 180.0) % 360.0) - 180.0
+        return ((b2 - b1 + 540.0) % 360.0) - 180.0
     }
 
     private fun classifyManeuver(angle: Double, roadType: String, nextRoadType: String): Pair<String, String?> {
@@ -1627,11 +1630,11 @@ internal object OfflineNavigationEngine {
             val destProj = findNearestRoadSegment(db, destLat, destLon)
 
             val startNode = startProj?.toNode ?: findNearestRoadNode(db, startLat, startLon) ?: run {
-                Log.w(TAG, "calculateSingleRouteInternal: start node not found for ($startLat, $startLon)")
+                Log.d(TAG, "calculateSingleRouteInternal: start node not found for ($startLat, $startLon)")
                 return null
             }
             val destNode = destProj?.fromNode ?: findNearestRoadNode(db, destLat, destLon) ?: run {
-                Log.w(TAG, "calculateSingleRouteInternal: dest node not found for ($destLat, $destLon)")
+                Log.d(TAG, "calculateSingleRouteInternal: dest node not found for ($destLat, $destLon)")
                 return null
             }
 
@@ -1773,10 +1776,6 @@ internal object OfflineNavigationEngine {
 
                         // 1. Road hierarchy preference & service penalty
                         var pFactor = ROAD_PRIORITY_WEIGHT[rType] ?: 1.2
-                        // Major arterial expressway bonus (Prospekt Salavata Yulaeva is Ufa's main high-speed arterial)
-                        if (rName.contains("Салавата Юлаева", ignoreCase = true)) {
-                            pFactor *= 0.65
-                        }
                         if (penalizedEdges != null && penalizedEdges.contains(Pair(u, v))) {
                             pFactor *= penaltyFactor
                         }

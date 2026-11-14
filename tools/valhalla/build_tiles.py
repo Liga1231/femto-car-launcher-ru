@@ -43,6 +43,9 @@ def build_tiles(pbf_path, output_dir="valhalla_tiles"):
     res = subprocess.run(tar_cmd)
     if res.returncode == 0:
         print(f"Success! Valhalla tiles archive created at {config['mjolnir']['tile_extract']}")
+    else:
+        print("Packaging tiles failed.")
+        sys.exit(res.returncode)
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

@@ -91,7 +91,8 @@ internal class MetNorwayApi(
                                     .header("Retry-After")
                                     ?.trim()
                                     ?.toLongOrNull()
-                                    ?.let { nowMs() + it * 1000 }
+                                    ?.takeIf { it >= 0 }
+                                    ?.let { nowMs() + it.coerceAtMost(24 * 3600) * 1000 }
                             Log.w(TAG, "forecast HTTP 429; Retry-After horizon ${retryAfterUntilMs ?: "unset"}")
                             null
                         }

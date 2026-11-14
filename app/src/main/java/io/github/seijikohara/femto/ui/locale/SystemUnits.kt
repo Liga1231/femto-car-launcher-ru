@@ -113,16 +113,30 @@ internal fun SpeedUnit.tripDistanceFromMeters(meters: Double): Double =
     }
 
 /** Odometer unit label paired with this speed unit. */
-internal fun SpeedUnit.distanceLabel(): String =
-    when (this) {
-        SpeedUnit.KILOMETERS_PER_HOUR -> "km"
-        SpeedUnit.MILES_PER_HOUR -> "mi"
+internal fun SpeedUnit.distanceLabel(locale: Locale = Locale.getDefault()): String =
+    if (locale.language == "ru") {
+        when (this) {
+            SpeedUnit.KILOMETERS_PER_HOUR -> "км"
+            SpeedUnit.MILES_PER_HOUR -> "миль"
+        }
+    } else {
+        when (this) {
+            SpeedUnit.KILOMETERS_PER_HOUR -> "km"
+            SpeedUnit.MILES_PER_HOUR -> "mi"
+        }
     }
 
-internal fun SpeedUnit.label(): String =
-    when (this) {
-        SpeedUnit.KILOMETERS_PER_HOUR -> "km/h"
-        SpeedUnit.MILES_PER_HOUR -> "mph"
+internal fun SpeedUnit.label(locale: Locale = Locale.getDefault()): String =
+    if (locale.language == "ru") {
+        when (this) {
+            SpeedUnit.KILOMETERS_PER_HOUR -> "км/ч"
+            SpeedUnit.MILES_PER_HOUR -> "миль/ч"
+        }
+    } else {
+        when (this) {
+            SpeedUnit.KILOMETERS_PER_HOUR -> "km/h"
+            SpeedUnit.MILES_PER_HOUR -> "mph"
+        }
     }
 
 /**

@@ -330,11 +330,11 @@
     <string name="settings_accent_warm">Песочный</string>
     <string name="settings_subheader_map_color">Цвет карты</string>
     <string name="settings_speed_km">км/ч</string>
-    <string name="settings_speed_mi">мили/ч</string>
+    <string name="settings_speed_mi">миль/ч</string>
     <string name="settings_temp_celsius">°C</string>
     <string name="settings_temp_fahrenheit">°F</string>
-    <string name="settings_clock_12">12 часов</string>
-    <string name="settings_clock_24">24 часа</string>
+    <string name="settings_clock_12">12-часовой</string>
+    <string name="settings_clock_24">24-часовой</string>
     <string name="settings_group_clock_seconds">Показывать секунды</string>
     <string name="settings_group_fullscreen">Во весь экран</string>
     <string name="settings_keep_screen_on">Не гасить экран</string>
@@ -426,7 +426,7 @@
     <string name="settings_trip_auto_reset_4h">После 4 ч стоянки</string>
     <string name="settings_trip_auto_reset_12h">После 12 ч стоянки</string>
     <string name="settings_group_track_recording">Запись трека</string>
-    <string name="settings_track_recording_desc">Записывать положение, скорость, курс и высоту во время движения для późнего просмотра. История хранится на этом устройстве.</string>
+    <string name="settings_track_recording_desc">Записывать положение, скорость, курс и высоту во время движения для позднего просмотра. История хранится на этом устройстве.</string>
     <string name="settings_group_track_retention">Хранить историю трека</string>
     <string name="settings_track_retention_30">30 дней</string>
     <string name="settings_track_retention_90">90 дней</string>

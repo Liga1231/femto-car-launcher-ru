@@ -72,7 +72,7 @@ internal class DestinationGeocoder(
             ).any { trimmed.contains(it, ignoreCase = true) }
 
             val queriesToTry = if (!hasExplicitCity) {
-                listOf("$trimmed, Уфа", trimmed, "$trimmed, Россия")
+                listOf(trimmed, "$trimmed, Россия")
             } else {
                 listOf(trimmed)
             }
@@ -106,38 +106,38 @@ internal class DestinationGeocoder(
                 }
             }
 
-            // Fallback to Nominatim search API with regional viewbox bias
-            val effectiveLocation = Location("default").apply {
-                latitude = 54.7350
-                longitude = 55.9580
-            }
-            val delta = 0.6
-            val viewbox =
+            // Fallback to Nominatim search API with regional viewbox bias if location is known
+            val userLat = OfflineNavigationEngine.userLat
+            val userLon = OfflineNavigationEngine.userLon
+            val viewbox = if (userLat != null && userLon != null) {
+                val delta = 0.6
                 String.format(
                     Locale.ROOT,
                     "%.4f,%.4f,%.4f,%.4f",
-                    effectiveLocation.longitude - delta,
-                    effectiveLocation.latitude + delta,
-                    effectiveLocation.longitude + delta,
-                    effectiveLocation.latitude - delta,
+                    userLon - delta,
+                    userLat + delta,
+                    userLon + delta,
+                    userLat - delta,
                 )
+            } else null
 
             for (candidate in queriesToTry) {
                 val point = runCatching {
-                    val url =
+                    val urlBuilder =
                         NOMINATIM_SEARCH_URL
                             .toHttpUrl()
                             .newBuilder()
                             .addPathSegment("search")
                             .addQueryParameter("format", "json")
                             .addQueryParameter("limit", "5")
-                            .addQueryParameter("countrycodes", "ru")
                             .addQueryParameter("accept-language", "ru")
                             .addQueryParameter("addressdetails", "1")
-                            .addQueryParameter("viewbox", viewbox)
                             .addQueryParameter("bounded", "0")
                             .addQueryParameter("q", candidate)
-                            .build()
+                    if (viewbox != null) {
+                        urlBuilder.addQueryParameter("viewbox", viewbox)
+                    }
+                    val url = urlBuilder.build()
 
                     val request =
                         Request
@@ -240,7 +240,6 @@ internal class DestinationGeocoder(
                         if (!addresses.isNullOrEmpty()) {
                             for (address in addresses) {
                                 val cCode = address.countryCode?.lowercase(Locale.ROOT)
-                                if (cCode != null && cCode != "ru") continue
                                 val title = formatAddressTitle(address, trimmed)
                                 val subtitle = formatAddressSubtitle(address)
                                 if (!isRussianLocation(title, subtitle, address.latitude, address.longitude, cCode)) {
@@ -263,20 +262,19 @@ internal class DestinationGeocoder(
 
                 // Nominatim search API
                 runCatching {
-                    val effectiveLocation = userLocation ?: Location("default").apply {
-                        latitude = 54.7350
-                        longitude = 55.9580
-                    }
-                    val delta = 0.6
-                    val viewbox =
+                    val uLat = userLocation?.latitude ?: OfflineNavigationEngine.userLat
+                    val uLon = userLocation?.longitude ?: OfflineNavigationEngine.userLon
+                    val viewbox = if (uLat != null && uLon != null) {
+                        val delta = 0.6
                         String.format(
                             Locale.ROOT,
                             "%.4f,%.4f,%.4f,%.4f",
-                            effectiveLocation.longitude - delta,
-                            effectiveLocation.latitude + delta,
-                            effectiveLocation.longitude + delta,
-                            effectiveLocation.latitude - delta,
+                            uLon - delta,
+                            uLat + delta,
+                            uLon + delta,
+                            uLat - delta,
                         )
+                    } else null
 
                     val urlBuilder =
                         NOMINATIM_SEARCH_URL
@@ -286,11 +284,12 @@ internal class DestinationGeocoder(
                             .addQueryParameter("format", "json")
                             .addQueryParameter("limit", (maxResults - localResults.size).coerceAtLeast(10).toString())
                             .addQueryParameter("addressdetails", "1")
-                            .addQueryParameter("countrycodes", "ru")
                             .addQueryParameter("accept-language", "ru")
-                            .addQueryParameter("viewbox", viewbox)
                             .addQueryParameter("bounded", "0")
                             .addQueryParameter("q", trimmed)
+                    if (viewbox != null) {
+                        urlBuilder.addQueryParameter("viewbox", viewbox)
+                    }
 
                     val request =
                         Request
@@ -310,7 +309,6 @@ internal class DestinationGeocoder(
                                 if (lat != 0.0 && lon != 0.0) {
                                     val addr = obj.optJSONObject("address")
                                     val cCode = addr?.optString("country_code")?.lowercase(Locale.ROOT)
-                                    if (cCode != null && cCode != "ru") continue
                                     val (title, subtitle) = parseNominatimSuggestion(obj, trimmed)
                                     if (!isRussianLocation(title, subtitle, lat, lon, cCode)) continue
                                     onlineResults.add(
@@ -426,27 +424,8 @@ internal class DestinationGeocoder(
             lon: Double,
             countryCode: String? = null,
         ): Boolean {
-            if (countryCode != null && countryCode.isNotBlank()) {
-                if (!countryCode.equals("ru", ignoreCase = true)) return false
-            }
-
-            val text = "${title.lowercase(Locale.ROOT)} ${subtitle.lowercase(Locale.ROOT)}"
-            val foreignKeywords = listOf(
-                "израиль", "israel", "сша", "usa", "united states", "германи", "germany",
-                "польш", "poland", "украин", "ukraine", "казахстан", "kazakhstan",
-                "беларусь", "belarus", "турци", "turkey", "франци", "france", "грузи", "georgia",
-                "армени", "armenia", "азербайджан", "azerbaijan", "узбекистан", "uzbekistan",
-                "таджикистан", "китай", "china", "литва", "латви", "эстони", "финлянд", "finland"
-            )
-            if (foreignKeywords.any { text.contains(it) }) {
-                return false
-            }
-
-            // Geographic boundary of the Russian Federation
-            if (lat !in 41.0..82.0) return false
-            if (lon !in 19.0..180.0 && lon !in -180.0..-168.0) return false
-
-            return true
+            // Geographic sanity check for global valid coordinates
+            return lat in -90.0..90.0 && lon in -180.0..180.0
         }
     }
 }

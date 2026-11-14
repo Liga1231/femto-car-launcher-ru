@@ -1,5 +1,6 @@
 package io.github.seijikohara.femto.ui.theme
 
+import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -79,9 +80,13 @@ fun FemtoTheme(
 
             inPreview -> LightFallback
 
-            darkTheme -> dynamicDarkColorScheme(context)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && darkTheme -> dynamicDarkColorScheme(context)
 
-            else -> dynamicLightColorScheme(context)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> dynamicLightColorScheme(context)
+
+            darkTheme -> DarkFallback
+
+            else -> LightFallback
         }
     // Scale the whole UI (text, icons, layout) by the user's UI-scale choice through
     // the density: dp and sp both derive from it, so the responsive layout also sees

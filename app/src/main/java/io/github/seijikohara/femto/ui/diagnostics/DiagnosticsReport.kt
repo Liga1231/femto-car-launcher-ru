@@ -72,7 +72,9 @@ internal fun diagnosticsReport(
 private fun StringBuilder.appendIssues(sections: List<DiagnosticSection>) {
     appendLine("## Issues")
     appendLine()
-    if (sections.issueCount() == 0) {
+    if (sections.any { it.payload == null }) {
+        appendLine("Collection in progress...")
+    } else if (sections.issueCount() == 0) {
         appendLine("No issues detected.")
     } else {
         sections.forEach { section ->

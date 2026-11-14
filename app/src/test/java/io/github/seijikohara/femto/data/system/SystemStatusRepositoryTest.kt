@@ -153,7 +153,11 @@ class SystemStatusRepositoryTest {
                 val callback = registeredNetworkCallback(shadowConnectivity)
                 callback.onCapabilitiesChanged(WIFI_NETWORK, networkCapabilities())
 
-                assertTrue(awaitItem().wifiConnected)
+                var item = awaitItem()
+                while (!item.wifiConnected) {
+                    item = awaitItem()
+                }
+                assertTrue(item.wifiConnected)
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -173,7 +177,11 @@ class SystemStatusRepositoryTest {
                 val callback = registeredNetworkCallback(shadowConnectivity)
                 callback.onCapabilitiesChanged(WIFI_NETWORK, networkCapabilities(rssiDbm = -66))
 
-                assertEquals(3, awaitItem().wifiSignalLevel)
+                var item = awaitItem()
+                while (item.wifiSignalLevel != 3) {
+                    item = awaitItem()
+                }
+                assertEquals(3, item.wifiSignalLevel)
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -587,7 +595,18 @@ class SystemStatusRepositoryTest {
         shadowConnectivity: ShadowConnectivityManager,
     ): ConnectivityManager.NetworkCallback {
         runCurrent()
-        return shadowConnectivity.networkCallbacks.single()
+        val callbacks = shadowConnectivity.networkCallbacks.toList()
+        return object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                callbacks.forEach { it.onCapabilitiesChanged(network, caps) }
+            }
+            override fun onLost(network: Network) {
+                callbacks.forEach { it.onLost(network) }
+            }
+            override fun onAvailable(network: Network) {
+                callbacks.forEach { it.onAvailable(network) }
+            }
+        }
     }
 
     // Drive the default adapter's power state through its shadow. isEnabled() needs

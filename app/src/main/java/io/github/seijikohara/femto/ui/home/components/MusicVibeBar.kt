@@ -119,7 +119,7 @@ internal fun MusicVibeBar(
         MusicVibes.ALL.forEach { vibe ->
             val title = stringResource(vibe.titleRes)
             val isActive =
-                isOnline && currentVibeTitle != null &&
+                isOnline && !currentVibeTitle.isNullOrBlank() &&
                     (
                         currentVibeTitle.equals(vibe.titleRu, ignoreCase = true) ||
                             currentVibeTitle.equals(title, ignoreCase = true) ||

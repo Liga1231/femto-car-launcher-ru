@@ -46,34 +46,35 @@ internal class CalendarCatalog(
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) ==
             PackageManager.PERMISSION_GRANTED
 
-    private fun readCalendars(): List<CalendarInfo> {
-        val projection =
-            arrayOf(
-                CalendarContract.Calendars._ID,
-                CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
-                CalendarContract.Calendars.ACCOUNT_NAME,
-                CalendarContract.Calendars.CALENDAR_COLOR,
-            )
-        return context.contentResolver
-            .query(
-                CalendarContract.Calendars.CONTENT_URI,
-                projection,
-                "${CalendarContract.Calendars.VISIBLE} = 1",
-                null,
-                "${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} ASC",
-            )?.use { c ->
-                buildList {
-                    while (c.moveToNext()) {
-                        add(
-                            CalendarInfo(
-                                id = c.getLong(0),
-                                displayName = c.getString(1).orEmpty(),
-                                accountName = c.getString(2).orEmpty(),
-                                color = c.getInt(3),
-                            ),
-                        )
+    private fun readCalendars(): List<CalendarInfo> =
+        runCatching {
+            val projection =
+                arrayOf(
+                    CalendarContract.Calendars._ID,
+                    CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+                    CalendarContract.Calendars.ACCOUNT_NAME,
+                    CalendarContract.Calendars.CALENDAR_COLOR,
+                )
+            context.contentResolver
+                .query(
+                    CalendarContract.Calendars.CONTENT_URI,
+                    projection,
+                    "${CalendarContract.Calendars.VISIBLE} = 1",
+                    null,
+                    "${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} ASC",
+                )?.use { c ->
+                    buildList {
+                        while (c.moveToNext()) {
+                            add(
+                                CalendarInfo(
+                                    id = c.getLong(0),
+                                    displayName = c.getString(1).orEmpty(),
+                                    accountName = c.getString(2).orEmpty(),
+                                    color = c.getInt(3),
+                                ),
+                            )
+                        }
                     }
-                }
-            }.orEmpty()
-    }
+                }.orEmpty()
+        }.getOrDefault(emptyList())
 }

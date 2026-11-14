@@ -10,10 +10,15 @@
     <exclude domain="file" path="datastore/location_preferences.preferences_pb" />
     <!-- The recorded trip track (1 Hz position, speed, bearing, altitude; recording is on by default and the history is kept for 90 days) is the most sensitive data the app holds. Auto Backup includes the database domain by default, which would copy that history to the user's Google account — the opposite of what Settings promises ("The history stays on this device"). -->
     <exclude domain="database" path="track_log.db" />
+        <exclude domain="database" path="track_log.db-wal" />
+        <exclude domain="database" path="track_log.db-shm" />
     <!-- update_preferences is the updater's bookkeeping about this install, none of it portable (see data_extraction_rules.xml). -->
     <exclude domain="file" path="datastore/update_preferences.preferences_pb" />
     <!-- saved_places is location data that stays on the device (see data_extraction_rules.xml). -->
     <exclude domain="file" path="datastore/saved_places.preferences_pb" />
+        <exclude domain="file" path="datastore/search_history.preferences_pb" />
+    <exclude domain="file" path="google_fonts" />
+    <exclude domain="file" path="google_fonts_catalog.json" />
     <!-- video_preferences holds a picked file whose read grant belongs to this install, and the picture gate a new install starts on (see data_extraction_rules.xml). -->
     <exclude domain="file" path="datastore/video_preferences.preferences_pb" />
 </full-backup-content>

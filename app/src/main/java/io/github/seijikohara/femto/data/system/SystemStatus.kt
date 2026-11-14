@@ -42,9 +42,8 @@ internal data class SystemStatus(
     // Satellites currently used in the GPS fix (0 while searching / no GNSS read).
     // Shown under the dock's GPS icon as a coarse reception quality readout.
     val gpsSatelliteCount: Int,
+    val isOnline: Boolean = wifiConnected || (cellularConnected == true),
 ) {
-    val isOnline: Boolean
-        get() = wifiConnected || (cellularConnected == true)
     companion object {
         val Initial: SystemStatus =
             SystemStatus(

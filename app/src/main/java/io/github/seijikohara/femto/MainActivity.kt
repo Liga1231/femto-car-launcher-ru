@@ -241,28 +241,57 @@ class MainActivity : ComponentActivity() {
             // let the splash lift. SideEffect so only an applied composition
             // publishes readiness; one-way, never reset.
             SideEffect { settingsReady = true }
-            var currentHour by remember { mutableIntStateOf(LocalTime.now().hour) }
+            var currentTime by remember { mutableStateOf(LocalTime.now()) }
             LaunchedEffect(Unit) {
                 while (true) {
-                    delay(10_000L)
-                    val hour = LocalTime.now().hour
-                    if (hour != currentHour) {
-                        currentHour = hour
-                    }
+                    delay(30_000L)
+                    currentTime = LocalTime.now()
                 }
             }
 
             val darkTheme =
                 if (settings.themeScheduleEnabled) {
-                    val lightHour = settings.themeScheduleLightHour
-                    val darkHour = settings.themeScheduleDarkHour
-                    val isDay =
-                        if (lightHour < darkHour) {
-                            currentHour in lightHour until darkHour
+                    val userLat = io.github.seijikohara.femto.data.navigation.OfflineNavigationEngine.userLat
+                    val userLon = io.github.seijikohara.femto.data.navigation.OfflineNavigationEngine.userLon
+                    if (userLat != null && userLon != null) {
+                        val sunTimes = io.github.seijikohara.femto.data.weather.SunCalculator.compute(
+                            userLat,
+                            userLon,
+                            java.time.LocalDate.now(),
+                            java.time.ZoneId.systemDefault(),
+                        )
+                        val sunrise = sunTimes.sunrise
+                        val sunset = sunTimes.sunset
+                        if (sunrise != null && sunset != null) {
+                            val isDay = if (sunrise < sunset) {
+                                currentTime >= sunrise && currentTime < sunset
+                            } else {
+                                currentTime >= sunrise || currentTime < sunset
+                            }
+                            !isDay
                         } else {
-                            currentHour >= lightHour || currentHour < darkHour
+                            val lightHour = settings.themeScheduleLightHour
+                            val darkHour = settings.themeScheduleDarkHour
+                            val hour = currentTime.hour
+                            val isDay = if (lightHour < darkHour) {
+                                hour in lightHour until darkHour
+                            } else {
+                                hour >= lightHour || hour < darkHour
+                            }
+                            !isDay
                         }
-                    !isDay
+                    } else {
+                        val lightHour = settings.themeScheduleLightHour
+                        val darkHour = settings.themeScheduleDarkHour
+                        val hour = currentTime.hour
+                        val isDay =
+                            if (lightHour < darkHour) {
+                                hour in lightHour until darkHour
+                            } else {
+                                hour >= lightHour || hour < darkHour
+                            }
+                        !isDay
+                    }
                 } else {
                     when (settings.themeMode) {
                         ThemeMode.SYSTEM -> isSystemInDarkTheme()

@@ -34,6 +34,7 @@ internal class GpxWriter(
     }
 
     fun point(point: TrackPointEntity) {
+        if (!point.latitude.isFinite() || !point.longitude.isFinite()) return
         when {
             openTripId != point.tripId -> startTrack(point.tripId)
             exceedsSegmentGap(point.timeMs) -> restartSegment()
@@ -51,7 +52,7 @@ internal class GpxWriter(
     // space forbids exponents. Double/Float.toString emits scientific notation
     // below 1e-3 (e.g. a longitude of 0.0004 near the prime meridian becomes
     // "4.0E-4"), which is schema-invalid; BigDecimal.toPlainString never does.
-    private fun plain(value: Double): String = BigDecimal.valueOf(value).toPlainString()
+    private fun plain(value: Double): String = if (value.isFinite()) BigDecimal.valueOf(value).toPlainString() else "0"
 
     fun end() {
         closeTrackIfOpen()

@@ -34,6 +34,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -380,6 +384,7 @@ private fun DashboardContent(
             tripExpanded = false
             videoExpanded = false
             destinationExpanded = false
+            quickSettingsExpanded = false
         }
     }
     LaunchedEffect(destinationExpanded) {
@@ -574,21 +579,28 @@ private fun DashboardContent(
     val context = LocalContext.current
     OfflineNavigationEngine.init(context)
     val networkMonitor = remember { NetworkMonitor.get(context) }
-    var isOfflineAreaAllowed by remember {
-        mutableStateOf(
+    val currentUiState by rememberUpdatedState(uiState)
+    var isOfflineAreaAllowed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val allowed = withContext(Dispatchers.IO) {
+            val loc = currentUiState.location
             OfflineNavigationEngine.isOfflineDataAvailable() &&
-                (uiState.location == null || OfflineNavigationEngine.isInsideDownloadedArea(
-                    uiState.location.latitude,
-                    uiState.location.longitude,
-                ))
-        )
+                (loc == null || OfflineNavigationEngine.isInsideDownloadedArea(loc.latitude, loc.longitude))
+        }
+        isOfflineAreaAllowed = allowed
     }
 
     DisposableEffect(networkMonitor) {
-        val listener = {
-            val loc = uiState.location
-            isOfflineAreaAllowed = OfflineNavigationEngine.isOfflineDataAvailable() &&
-                (loc == null || OfflineNavigationEngine.isInsideDownloadedArea(loc.latitude, loc.longitude))
+        val listener: () -> Unit = {
+            val loc = currentUiState.location
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                val allowed = OfflineNavigationEngine.isOfflineDataAvailable() &&
+                    (loc == null || OfflineNavigationEngine.isInsideDownloadedArea(loc.latitude, loc.longitude))
+                withContext(Dispatchers.Main) {
+                    isOfflineAreaAllowed = allowed
+                }
+            }
         }
         networkMonitor.addOnNetworkLostListener(listener)
         onDispose {
@@ -599,9 +611,12 @@ private fun DashboardContent(
     LaunchedEffect(uiState.location) {
         val loc = uiState.location
         if (loc != null) {
-            OfflineNavigationEngine.updateUserLocation(loc.latitude, loc.longitude)
-            isOfflineAreaAllowed = OfflineNavigationEngine.isOfflineDataAvailable() &&
-                OfflineNavigationEngine.isInsideDownloadedArea(loc.latitude, loc.longitude)
+            val allowed = withContext(Dispatchers.IO) {
+                OfflineNavigationEngine.updateUserLocation(loc.latitude, loc.longitude)
+                OfflineNavigationEngine.isOfflineDataAvailable() &&
+                    OfflineNavigationEngine.isInsideDownloadedArea(loc.latitude, loc.longitude)
+            }
+            isOfflineAreaAllowed = allowed
         }
     }
 

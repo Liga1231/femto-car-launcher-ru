@@ -6,6 +6,7 @@ import android.util.Log
 import io.github.seijikohara.femto.data.places.PlaceTarget
 import io.github.seijikohara.femto.data.places.SearchHistoryStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -79,11 +80,9 @@ internal class NavigationManager(
 
                 val isOnline = NetworkMonitor.isOnline()
                 val isValhalla = ValhallaNavigationEngine.isAvailable(destinationGeocoder.context)
-                val canUseOffline = (isValhalla || OfflineNavigationEngine.isOfflineRoutingAvailable()) &&
-                    OfflineNavigationEngine.isInBashkortostan(startLoc.latitude, startLoc.longitude) &&
-                    OfflineNavigationEngine.isInBashkortostan(destPoint.latitude, destPoint.longitude)
+                val canUseOffline = isValhalla || OfflineNavigationEngine.isOfflineRoutingAvailable()
 
-                Log.i(
+                Log.d(
                     TAG,
                     "calculateRoutes: isOnline=$isOnline, isValhalla=$isValhalla, canUseOffline=$canUseOffline " +
                         "start=(${startLoc.latitude}, ${startLoc.longitude}) dest=(${destPoint.latitude}, ${destPoint.longitude}) label='$destLabel'"
@@ -123,7 +122,7 @@ internal class NavigationManager(
                             destLat = destPoint.latitude,
                             destLon = destPoint.longitude,
                             destinationLabel = destLabel,
-                            numRoutes = 1,
+                            numRoutes = 2,
                         )
                     } else {
                         emptyList()
@@ -142,8 +141,17 @@ internal class NavigationManager(
                     )
                     if (vRoutes.isNotEmpty()) {
                         vRoutes
+                    } else if (canUseOffline) {
+                        Log.w(TAG, "Valhalla engine returned empty routes for ($destLabel), falling back to SQLite")
+                        OfflineNavigationEngine.calculateRoutesFromDatabase(
+                            startLat = startLoc.latitude,
+                            startLon = startLoc.longitude,
+                            destLat = destPoint.latitude,
+                            destLon = destPoint.longitude,
+                            destinationLabel = destLabel,
+                            numRoutes = 2,
+                        )
                     } else {
-                        Log.w(TAG, "Valhalla engine returned empty routes for ($destLabel), skipping slow SQLite")
                         emptyList()
                     }
                 } else if (canUseOffline) {
@@ -155,17 +163,19 @@ internal class NavigationManager(
                         destLat = destPoint.latitude,
                         destLon = destPoint.longitude,
                         destinationLabel = destLabel,
-                        numRoutes = 1,
+                        numRoutes = 2,
                     )
                 } else {
                     emptyList()
                 }
 
+                ensureActive()
                 if (effectiveRoutes.isEmpty()) {
                     _state.value = NavigationState.Error("Маршрут не найден или нет подключения к сети", destLabel)
                     return@launch
                 }
 
+                ensureActive()
                 // Show route preview with alternatives on map & HUD!
                 _state.value = NavigationState.RouteSelection(
                     routes = effectiveRoutes,
@@ -335,9 +345,7 @@ internal class NavigationManager(
             try {
                 val isOnline = NetworkMonitor.isOnline()
                 val isValhalla = ValhallaNavigationEngine.isAvailable(destinationGeocoder.context)
-                val canUseOffline = (isValhalla || OfflineNavigationEngine.isOfflineRoutingAvailable()) &&
-                    OfflineNavigationEngine.isInBashkortostan(currentLocation.latitude, currentLocation.longitude) &&
-                    OfflineNavigationEngine.isInBashkortostan(route.destination.latitude, route.destination.longitude)
+                val canUseOffline = isValhalla || OfflineNavigationEngine.isOfflineRoutingAvailable()
 
                 val newRoute = if (isOnline) {
                     val online = runCatching {
@@ -395,6 +403,7 @@ internal class NavigationManager(
                         destinationLabel = route.destinationLabel,
                     )
                 } else null
+                ensureActive()
                 if (newRoute != null) {
                     val distanceToFirst = newRoute.steps.firstOrNull()?.let {
                         computeDistance(

@@ -13,6 +13,7 @@ internal fun fakeSystemStatus(
     charging: Boolean = false,
     gpsFixed: Boolean = false,
     gpsSatelliteCount: Int = 0,
+    isOnline: Boolean = wifiConnected || (cellularConnected == true),
 ): SystemStatus =
     SystemStatus(
         cellularConnected = cellularConnected,
@@ -25,4 +26,5 @@ internal fun fakeSystemStatus(
         charging = charging,
         gpsFixed = gpsFixed,
         gpsSatelliteCount = gpsSatelliteCount,
+        isOnline = isOnline,
     )

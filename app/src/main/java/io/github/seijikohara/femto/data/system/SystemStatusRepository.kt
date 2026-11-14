@@ -108,6 +108,7 @@ internal class SystemStatusRepository(
                 locationEnabled = gps.enabled,
                 gpsFixed = gps.fixed,
                 gpsSatelliteCount = gps.satellites,
+                isOnline = connectivitySignals.online,
             )
         }.distinctUntilChanged().flowOn(dispatcher)
 
@@ -231,8 +232,9 @@ internal class SystemStatusRepository(
             // emit a spurious false->null transition before the seed.
             cellularFlow(),
             wifiFlow().onStart { emit(WifiReading(connected = false, level = 0)) },
-        ) { cellularConnected, wifi ->
-            ConnectivitySignals(cellularConnected = cellularConnected, wifi = wifi)
+            onlineFlow(),
+        ) { cellularConnected, wifi, online ->
+            ConnectivitySignals(cellularConnected = cellularConnected, wifi = wifi, online = online)
         }
 
     private fun wifiFlow(): Flow<WifiReading> {
@@ -581,6 +583,7 @@ internal class SystemStatusRepository(
     private data class ConnectivitySignals(
         val cellularConnected: Boolean?,
         val wifi: WifiReading,
+        val online: Boolean,
     )
 
     // Pairs the GPS freshness flag (from locationFlow) with the GnssStatus

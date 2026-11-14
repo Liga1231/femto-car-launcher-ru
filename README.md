@@ -7,7 +7,7 @@
 **Автомобильный Android лаунчер с русским интерфейсом, навигацией и Яндекс Музыкой.**  
 *A glanceable in-car Android launcher with full Russian interface, navigation & Yandex Music.*
 
-[![Скачать APK](https://img.shields.io/badge/Скачать_APK-v2.0.0--ru-3B82F6?logo=android&logoColor=white)](https://github.com/Liga1231/femto-car-launcher-ru/releases/latest)
+[![Скачать APK](https://img.shields.io/badge/Скачать_APK-v2.1.0--ru-3B82F6?logo=android&logoColor=white)](https://github.com/Liga1231/femto-car-launcher-ru/releases/latest)
 [![Русский интерфейс](https://img.shields.io/badge/Interface-Русский_%2F_RU-red)](README.md)
 [![Android 10-12+](https://img.shields.io/badge/Android-10_--_12%2B_(API_29%2B)-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Yandex Music Integration](https://img.shields.io/badge/Yandex_Music-Vibes_%26_Flows-yellow?logo=yandexmusic&logoColor=white)](https://music.yandex.ru)
@@ -67,7 +67,7 @@
   * Поддержка устройств с Android 10 (API 29) и Android 12 (API 31/32).
   * Оптимизация нагрузки на процессоры MediaTek (MTK) и GPU Mali (устранение микрофризов и оптимизация размытия Compose Haze).
   * Защита от случайного опускания шторки уведомлений Android.
-  * Скрипты контроля уровня заряда батареи (Root Battery Limiter (`tools/battery/`)) для защиты аккумулятора от деградации и вздутия при постоянном питании в автомобиле.
+  * Скрипты настройки политик и интеграции с Magisk (`tools/battery/set_policy.sh`).
   * Очистка репозитория от тяжелых бинарных файлов и мусора.
 * 🛡️ **Нужны ли Root-права (Magisk / SuperSU)?**
   * **Лаунчер полностью работает БЕЗ Root-прав** — карты, навигация, виджеты, сценарии, слайдер яркости и Яндекс Музыка работают на любом стандартном устройстве из коробки.
@@ -112,7 +112,7 @@
   * Full support for Android 10 (API 29) and Android 12 (API 31/32) head units and tablets.
   * MediaTek (MTK) chipset and Mali GPU performance profiling: eliminated UI stutter and optimized heavy Gaussian blurs.
   * Notification shade pull-down guard preventing accidental Android system panel expansion.
-  * Battery longevity management scripts (Root Battery Limiter (`tools/battery/`)) preventing battery swelling under continuous in-vehicle charging.
+  * Device and superuser management policies (`tools/battery/set_policy.sh`) for headless in-vehicle operation.
   * Purged repository from legacy APK binaries and temporary build clutter.
 * 🛡️ **Are Root Permissions (Magisk / SuperSU) Required?**
   * **The launcher runs completely WITHOUT Root** — maps, in-app navigation, media controls, Yandex Music, widgets, solar scenarios, and brightness adjustments work out-of-the-box on standard unrooted devices.
@@ -128,7 +128,7 @@ Femto Car Launcher replaces the Android home screen with a single fixed dashboar
 
 Femto Car Launcher targets three hardware classes: aftermarket CarPlay / Android Auto AI boxes that inject Android into a factory display, Android head units (aftermarket units installed in the dashboard), and car-mounted phones. On a phone the launcher also runs as a regular app; making it the default home screen stays optional. The minimum supported platform is Android 10, which is Application Programming Interface (API) level 29 (compatible with Android 10, 11, 12, 13+). No single market is privileged: language, units, and locale-specific behavior adapt per device.
 
-The [project site](https://seijikohara.github.io/femto-car-launcher/) describes each feature, carries the install guide, and hosts a screenshot catalog of the dashboard across display geometries, display sizes, themes, driver sides, and dock positions.
+The [project site](https://github.com/Liga1231/femto-car-launcher-ru) describes each feature, carries the install guide, and hosts a screenshot catalog of the dashboard across display geometries, display sizes, themes, driver sides, and dock positions.
 
 
 
@@ -194,7 +194,7 @@ The dashboard layout does not change with vehicle motion, and the launcher has n
 
 В репозитории в каталоге [`tools/`](tools/README.md) содержатся готовые утилиты:
 - 🗺️ **[tools/valhalla/](tools/valhalla/)**: Скрипты сборки оффлайн-тайлов навигации Valhalla (`build_tiles.py`) из любых OSM `.pbf` дампов с автоматической конвертацией в формат `.tar` для головных устройств.
-- 🔋 **[tools/battery/](tools/battery/)**: Скрипты аппаратного контроля уровня заряда батареи (`battery_limiter.sh`, `set_policy.sh`) для предотвращения вздутия аккумулятора при непрерывном автомобильном питании.
+- 🔋 **[tools/battery/](tools/battery/)**: Скрипты настройки прав и политик устройства (`set_policy.sh`) для интеграции с Magisk.
 
 ## Installation
 

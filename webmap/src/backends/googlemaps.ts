@@ -1367,7 +1367,7 @@ export async function init(reporter: PageReporter, pending: PendingBridgeCalls):
         }
     }
 
-    function applyGoogleRoute(geojsonStr: string | null): void {
+    function applyGoogleRoute(geojsonStr: string | null, isDarkParam?: boolean): void {
         clearGoogleRoute();
         if (!geojsonStr) return;
         try {
@@ -1403,7 +1403,7 @@ export async function init(reporter: PageReporter, pending: PendingBridgeCalls):
                     routeDisplay.polyline = new mapsLib.Polyline({
                         path: coordinates,
                         geodesic: true,
-                        strokeColor: "#3B82F6",
+                        strokeColor: isDarkParam ? "#F08080" : "#3B82F6",
                         strokeOpacity: 0.9,
                         strokeWeight: 6,
                         map: liveMap,
@@ -1423,8 +1423,8 @@ export async function init(reporter: PageReporter, pending: PendingBridgeCalls):
         }
     }
 
-    window.setRoute = (geojson) => {
-        applyGoogleRoute(geojson);
+    window.setRoute = (geojson, isDark) => {
+        applyGoogleRoute(geojson, isDark);
     };
     window.clearRoute = () => {
         clearGoogleRoute();
@@ -1436,6 +1436,6 @@ export async function init(reporter: PageReporter, pending: PendingBridgeCalls):
     if (pending.setNorthUp != null) window.setNorthUp(pending.setNorthUp);
     if (pending.setFollow != null) window.setFollow(pending.setFollow);
     if (pending.updateCamera) window.updateCamera(...pending.updateCamera);
-    if (pending.setRoute !== undefined) window.setRoute(pending.setRoute);
+    if (pending.setRoute !== undefined) window.setRoute(pending.setRoute, pending.setRouteDark);
     if (pending.onHostResume) window.onHostResume();
 }

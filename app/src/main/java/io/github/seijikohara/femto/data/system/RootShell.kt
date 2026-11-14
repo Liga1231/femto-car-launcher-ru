@@ -12,7 +12,34 @@ import kotlinx.coroutines.withContext
 internal object RootShell {
     private const val TAG = "RootShell"
 
+    @Volatile
+    private var rootAvailableCached: Boolean? = null
+
+    fun isRootAvailable(): Boolean {
+        rootAvailableCached?.let { return it }
+        val available = try {
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            val finished = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                process.waitFor(1000L, java.util.concurrent.TimeUnit.MILLISECONDS)
+            } else {
+                process.waitFor() == 0
+                true
+            }
+            if (!finished) {
+                process.destroyForcibly()
+                false
+            } else {
+                process.exitValue() == 0
+            }
+        } catch (_: Exception) {
+            false
+        }
+        rootAvailableCached = available
+        return available
+    }
+
     fun run(command: String, timeoutMs: Long = 1500L): Boolean {
+        if (rootAvailableCached == false) return false
         return try {
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
             val finished = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -25,8 +52,11 @@ internal object RootShell {
                 process.destroy()
                 return false
             }
-            process.exitValue() == 0
+            val success = process.exitValue() == 0
+            if (success) rootAvailableCached = true
+            success
         } catch (e: Exception) {
+            rootAvailableCached = false
             Log.w(TAG, "Root command failed: $command", e)
             false
         }
@@ -36,17 +66,25 @@ internal object RootShell {
         run(command, timeoutMs)
     }
 
-    fun runOut(command: String): String {
+    fun runOut(command: String, timeoutMs: Long = 1500L): String {
+        if (rootAvailableCached == false) return ""
         return try {
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
-            val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                process.waitFor(1500L, java.util.concurrent.TimeUnit.MILLISECONDS)
+            val finished = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
             } else {
-                process.waitFor()
+                process.waitFor() == 0
+                true
             }
-            output
+            if (!finished) {
+                process.destroyForcibly()
+                return ""
+            }
+            val res = process.inputStream.bufferedReader().use { it.readText() }.trim()
+            rootAvailableCached = true
+            res
         } catch (e: Exception) {
+            rootAvailableCached = false
             Log.w(TAG, "Root command out failed: $command", e)
             ""
         }

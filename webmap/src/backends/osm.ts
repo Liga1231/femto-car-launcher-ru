@@ -132,6 +132,8 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
         buildingColor: "",
         styleFadeGen: 0,
         currentRouteGeoJson: null as string | null,
+        isDark: false,
+        routeClickListenersInstalled: false,
         leftSafe: 0,
         rightSafe: 0,
     };
@@ -493,7 +495,7 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
             }
         }
 
-        function applyRoute(geojsonStr: string | null): void {
+        function applyRoute(geojsonStr: string | null, isDarkParam?: boolean): void {
             if (!liveMap.isStyleLoaded()) return;
             if (!geojsonStr) {
                 clearRouteLayers();
@@ -502,6 +504,15 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
             try {
                 const parsed: unknown = JSON.parse(geojsonStr);
                 if (!isGeoJsonData(parsed)) return;
+
+                if (isDarkParam !== undefined) {
+                    state.isDark = isDarkParam;
+                }
+                const isDark = Boolean(
+                    state.isDark || state.currentStyleUrl?.toLowerCase().includes("dark"),
+                );
+                const routeColor = isDark ? "#F08080" : "#3B82F6";
+                const casingColor = isDark ? "#4A1515" : "#172554";
 
                 const isPreview = isPreviewGeoJson(parsed) && Boolean(parsed.preview);
                 const altFilter: FilterSpecification = isPreview
@@ -528,9 +539,11 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
                     }
                     if (liveMap.getLayer(ROUTE_CASING_LAYER_ID)) {
                         liveMap.setFilter(ROUTE_CASING_LAYER_ID, activeFilter);
+                        liveMap.setPaintProperty(ROUTE_CASING_LAYER_ID, "line-color", casingColor);
                     }
                     if (liveMap.getLayer(ROUTE_LINE_LAYER_ID)) {
                         liveMap.setFilter(ROUTE_LINE_LAYER_ID, activeFilter);
+                        liveMap.setPaintProperty(ROUTE_LINE_LAYER_ID, "line-color", routeColor);
                     }
                 };
 
@@ -604,7 +617,7 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
                             "line-join": "round",
                         },
                         paint: {
-                            "line-color": "#172554",
+                            "line-color": casingColor,
                             "line-width": [
                                 "interpolate",
                                 ["linear"],
@@ -629,7 +642,7 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
                             "line-join": "round",
                         },
                         paint: {
-                            "line-color": "#3B82F6",
+                            "line-color": routeColor,
                             "line-width": [
                                 "interpolate",
                                 ["linear"],
@@ -667,24 +680,27 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
                         },
                     });
 
-                    liveMap.on("click", ROUTE_ALT_LINE_LAYER_ID, (e) => {
-                        const feats = e.features;
-                        if (!feats || feats.length === 0) return;
-                        const first = feats[0];
-                        const idx = first.properties?.routeIndex;
-                        if (idx !== undefined && idx !== null) {
-                            reporter.report("routeSelect", String(idx));
-                        }
-                    });
-                    liveMap.on("click", ROUTE_LINE_LAYER_ID, (e) => {
-                        const feats = e.features;
-                        if (!feats || feats.length === 0) return;
-                        const first = feats[0];
-                        const idx = first.properties?.routeIndex;
-                        if (idx !== undefined && idx !== null) {
-                            reporter.report("routeSelect", String(idx));
-                        }
-                    });
+                    if (!state.routeClickListenersInstalled) {
+                        state.routeClickListenersInstalled = true;
+                        liveMap.on("click", ROUTE_ALT_LINE_LAYER_ID, (e) => {
+                            const feats = e.features;
+                            if (!feats || feats.length === 0) return;
+                            const first = feats[0];
+                            const idx = first.properties?.routeIndex;
+                            if (idx !== undefined && idx !== null) {
+                                reporter.report("routeSelect", String(idx));
+                            }
+                        });
+                        liveMap.on("click", ROUTE_LINE_LAYER_ID, (e) => {
+                            const feats = e.features;
+                            if (!feats || feats.length === 0) return;
+                            const first = feats[0];
+                            const idx = first.properties?.routeIndex;
+                            if (idx !== undefined && idx !== null) {
+                                reporter.report("routeSelect", String(idx));
+                            }
+                        });
+                    }
                 }
                 fitRouteBounds(parsed);
             } catch (e) {
@@ -692,9 +708,10 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
             }
         }
 
-        window.setRoute = (geojson) => {
+        window.setRoute = (geojson, isDark) => {
             state.currentRouteGeoJson = geojson;
-            applyRoute(geojson);
+            if (isDark !== undefined) state.isDark = isDark;
+            applyRoute(geojson, isDark);
         };
         window.clearRoute = () => {
             state.currentRouteGeoJson = null;
@@ -708,7 +725,7 @@ export function init(reporter: PageReporter, pending: PendingBridgeCalls): void 
         if (pending.setNorthUp != null) window.setNorthUp(pending.setNorthUp);
         if (pending.setFollow != null) window.setFollow(pending.setFollow);
         if (pending.updateCamera) window.updateCamera(...pending.updateCamera);
-        if (pending.setRoute !== undefined) window.setRoute(pending.setRoute);
+        if (pending.setRoute !== undefined) window.setRoute(pending.setRoute, pending.setRouteDark);
         if (pending.onHostResume) window.onHostResume();
     } catch (e) {
         log(`exception:${e instanceof Error ? e.message : String(e)}`);
