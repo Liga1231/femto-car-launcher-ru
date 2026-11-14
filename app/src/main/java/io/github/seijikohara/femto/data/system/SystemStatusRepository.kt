@@ -18,7 +18,11 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.telephony.SignalStrength
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
@@ -84,6 +88,7 @@ internal class SystemStatusRepository(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val connectivity: ConnectivityManager? = context.getSystemService()
+    private val wifiManager: WifiManager? = context.getSystemService()
     private val bluetoothManager: BluetoothManager? = context.getSystemService()
     private val telephonyManager: TelephonyManager? = context.getSystemService()
     private val locationManager: LocationManager? = context.getSystemService()
@@ -272,7 +277,12 @@ internal class SystemStatusRepository(
     // an OEM-configurable ceiling through the Wi-Fi service, which neither pins
     // the dock's fixed 0..MAX_SIGNAL_LEVEL range nor runs under Robolectric.
     private fun wifiLevelFrom(caps: NetworkCapabilities): Int {
-        val rssi = caps.signalStrength
+        val rssi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            caps.signalStrength
+        } else {
+            @Suppress("DEPRECATION")
+            wifiManager?.connectionInfo?.rssi ?: Int.MIN_VALUE
+        }
         if (rssi == Int.MIN_VALUE) return 0
         return when {
             rssi <= WIFI_MIN_RSSI_DBM -> 0
@@ -360,13 +370,30 @@ internal class SystemStatusRepository(
                 awaitClose { }
                 return@callbackFlow
             }
-            val callback = object : TelephonyCallback(), TelephonyCallback.SignalStrengthsListener {
-                override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
-                    trySend(signalStrength.level.coerceIn(0, MAX_SIGNAL_LEVEL))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val callback = object : TelephonyCallback(), TelephonyCallback.SignalStrengthsListener {
+                    override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
+                        trySend(signalStrength.level.coerceIn(0, MAX_SIGNAL_LEVEL))
+                    }
+                }
+                tm.registerTelephonyCallback(context.mainExecutor, callback)
+                awaitClose { tm.unregisterTelephonyCallback(callback) }
+            } else {
+                @Suppress("DEPRECATION")
+                val listener = object : android.telephony.PhoneStateListener() {
+                    @Deprecated("Deprecated in Java")
+                    override fun onSignalStrengthsChanged(signalStrength: SignalStrength?) {
+                        val level = signalStrength?.level?.coerceIn(0, MAX_SIGNAL_LEVEL)
+                        trySend(level)
+                    }
+                }
+                @Suppress("DEPRECATION")
+                tm.listen(listener, android.telephony.PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
+                awaitClose {
+                    @Suppress("DEPRECATION")
+                    tm.listen(listener, android.telephony.PhoneStateListener.LISTEN_NONE)
                 }
             }
-            tm.registerTelephonyCallback(context.mainExecutor, callback)
-            awaitClose { tm.unregisterTelephonyCallback(callback) }
         }
 
     // Combine the reception flag with the satellite count so the dock renders
@@ -461,7 +488,13 @@ internal class SystemStatusRepository(
             // Registration refusal is reported via the Boolean, not an exception,
             // so no upstream catch ever sees it — the dock would read "searching"
             // forever despite a working fix. Some head-unit GNSS HALs do refuse.
-            if (!lm.registerGnssStatusCallback(context.mainExecutor, callback)) {
+            val registered = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                lm.registerGnssStatusCallback(context.mainExecutor, callback)
+            } else {
+                val handler = Handler(Looper.getMainLooper())
+                lm.registerGnssStatusCallback(callback, handler)
+            }
+            if (!registered) {
                 Log.w(TAG, "GnssStatus callback registration refused; satellite count stays 0")
             }
             awaitClose { lm.unregisterGnssStatusCallback(callback) }
@@ -512,23 +545,25 @@ internal class SystemStatusRepository(
 
     @SuppressLint("MissingPermission") // Permission is checked via hasBluetoothConnectPermission().
     private fun readBluetooth(adapter: BluetoothAdapter?): BluetoothReading {
-        val enabled = adapter?.isEnabled == true
-        if (!enabled) return BluetoothReading(enabled = false, connected = false)
-        // Without BLUETOOTH_CONNECT the connected-device APIs throw, so the precise
-        // pairing state is unknowable; treat an enabled adapter as connected so a
-        // head unit paired to a phone is not under-reported.
-        val connected =
-            if (!context.hasBluetoothConnectPermission()) {
-                true
-            } else {
-                val devices = bluetoothManager?.getConnectedDevices(BluetoothProfile.GATT) ?: emptyList()
-                devices.isNotEmpty() ||
-                    adapter.getProfileConnectionState(BluetoothProfile.HEADSET) ==
-                    BluetoothAdapter.STATE_CONNECTED ||
-                    adapter.getProfileConnectionState(BluetoothProfile.A2DP) ==
-                    BluetoothAdapter.STATE_CONNECTED
-            }
-        return BluetoothReading(enabled = true, connected = connected)
+        return runCatching {
+            val enabled = runCatching { adapter?.isEnabled == true }.getOrDefault(false)
+            if (!enabled) return@runCatching BluetoothReading(enabled = false, connected = false)
+            // Without BLUETOOTH_CONNECT the connected-device APIs throw, so the precise
+            // pairing state is unknowable; treat an enabled adapter as connected so a
+            // head unit paired to a phone is not under-reported.
+            val connected =
+                if (!context.hasBluetoothConnectPermission()) {
+                    true
+                } else {
+                    val devices = bluetoothManager?.getConnectedDevices(BluetoothProfile.GATT) ?: emptyList()
+                    devices.isNotEmpty() ||
+                        adapter?.getProfileConnectionState(BluetoothProfile.HEADSET) ==
+                        BluetoothAdapter.STATE_CONNECTED ||
+                        adapter?.getProfileConnectionState(BluetoothProfile.A2DP) ==
+                        BluetoothAdapter.STATE_CONNECTED
+                }
+            BluetoothReading(enabled = true, connected = connected)
+        }.getOrDefault(BluetoothReading(enabled = false, connected = false))
     }
 
     private fun batteryFlow(): Flow<BatteryReading> =

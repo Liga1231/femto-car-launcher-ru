@@ -3,6 +3,7 @@ package io.github.seijikohara.femto.data.common
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.content.ContextCompat
 
 /**
@@ -51,10 +52,17 @@ internal fun Context.hasRecordAudioPermission(): Boolean =
  * minSdk is 33, so it is always a runtime grant and never auto-granted.
  */
 internal fun Context.hasBluetoothConnectPermission(): Boolean =
-    ContextCompat.checkSelfPermission(
-        this,
-        Manifest.permission.BLUETOOTH_CONNECT,
-    ) == PackageManager.PERMISSION_GRANTED
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.BLUETOOTH_CONNECT,
+        ) == PackageManager.PERMISSION_GRANTED
+    } else {
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.BLUETOOTH,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
 /**
  * The "Install unknown apps" access the in-app updater installs with. Unlike

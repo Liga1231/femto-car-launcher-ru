@@ -804,7 +804,7 @@ class MainActivity : ComponentActivity() {
                 }
                 if (!hasReadCalendarPermission()) add(Manifest.permission.READ_CALENDAR)
                 if (!hasReadPhoneStatePermission()) add(Manifest.permission.READ_PHONE_STATE)
-                if (!hasBluetoothConnectPermission()) add(Manifest.permission.BLUETOOTH_CONNECT)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasBluetoothConnectPermission()) add(Manifest.permission.BLUETOOTH_CONNECT)
             }
         if (needed.isNotEmpty()) permissionsLauncher.launch(needed.toTypedArray())
     }
@@ -851,7 +851,8 @@ class MainActivity : ComponentActivity() {
     // POST_NOTIFICATIONS is a runtime grant at the minSdk-33 floor, so no
     // SDK_INT guard is needed.
     private fun ensurePostNotificationsPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
             permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))

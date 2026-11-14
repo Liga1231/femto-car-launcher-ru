@@ -39,6 +39,7 @@ internal class NavigationManager(
     private var lastKnownLocation: Location? = null
     private var pendingTarget: PlaceTarget? = null
     private var pendingLabel: String = ""
+    @Volatile
     private var lastPassedCoordIndex: Int = 0
 
     fun startNavigation(

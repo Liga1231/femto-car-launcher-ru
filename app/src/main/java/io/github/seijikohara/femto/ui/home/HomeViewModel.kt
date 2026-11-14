@@ -29,6 +29,7 @@ import io.github.seijikohara.femto.data.geocoding.ReverseGeocoder
 import io.github.seijikohara.femto.data.geocoding.ReverseGeocoderRepository
 import io.github.seijikohara.femto.data.geocoding.ShortAddress
 import io.github.seijikohara.femto.data.location.LocationGraph
+import io.github.seijikohara.femto.data.location.MIN_MOVING_SPEED_MS
 import io.github.seijikohara.femto.data.location.TripState
 import io.github.seijikohara.femto.data.location.VehicleMotion
 import io.github.seijikohara.femto.data.location.vehicleMotionFlow
@@ -56,6 +57,7 @@ import io.github.seijikohara.femto.data.update.skipped
 import io.github.seijikohara.femto.data.weather.MetNorwayApi
 import io.github.seijikohara.femto.data.weather.WeatherRepository
 import io.github.seijikohara.femto.data.weather.WeatherSnapshot
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,14 +66,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.launch
 import okhttp3.Cache
 import okhttp3.OkHttpClient
@@ -160,9 +161,6 @@ internal class HomeViewModel(
             musicStateFlow.catchAsDefault(TAG, "music", HomeUiState.Initial.musicState),
             updateBadge,
         ) { location, address, weather, music, badge ->
-            if (location != null) {
-                navigationManager?.onLocationChanged(location)
-            }
             CoreSignals(location, address, weather, music, badge)
         }
 
@@ -174,6 +172,8 @@ internal class HomeViewModel(
             tripStateFlow.catchAsDefault(TAG, "trip state", HomeUiState.Initial.tripState),
             navigationManager?.state ?: flowOf(NavigationState.Idle),
         ) { core, calendar, systemStatus, tripState, navState ->
+            val moving = !tripState.stationary ||
+                (core.location != null && core.location.hasSpeed() && core.location.speed >= MIN_MOVING_SPEED_MS)
             HomeUiState(
                 location = core.location,
                 address = core.address,
@@ -184,6 +184,7 @@ internal class HomeViewModel(
                 tripState = tripState,
                 updateBadge = core.updateBadge,
                 navigationState = navState,
+                isMoving = moving,
             )
         }.stateIn(viewModelScope, WhileUiSubscribed, HomeUiState.Initial)
 
@@ -195,6 +196,14 @@ internal class HomeViewModel(
                     .distinctUntilChanged()
                     .collect { isOnline ->
                         navigationManager.onNetworkAvailabilityChanged(isOnline)
+                    }
+            }
+            viewModelScope.launch(Dispatchers.Default) {
+                locationFlow
+                    .filterNotNull()
+                    .distinctUntilChanged()
+                    .collect { location ->
+                        navigationManager.onLocationChanged(location)
                     }
             }
         }

@@ -3,6 +3,7 @@ package io.github.seijikohara.femto.data.geocoding
 import android.content.Context
 import android.location.Address
 import android.location.Geocoder
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -48,25 +49,32 @@ internal class PlatformReverseGeocoder(
             // construction) governs the returned address language.
             val geocoder = Geocoder(appContext, localeProvider())
             runCatching {
-                suspendCancellableCoroutine<Address?> { continuation ->
-                    // The minSdk-33 async listener variant; the legacy blocking
-                    // overload is deprecated on API 33+.
-                    geocoder.getFromLocation(
-                        latitude,
-                        longitude,
-                        1,
-                        object : Geocoder.GeocodeListener {
-                            override fun onGeocode(addresses: MutableList<Address>) {
-                                continuation.resume(addresses.firstOrNull())
-                            }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    suspendCancellableCoroutine<Address?> { continuation ->
+                        // The API 33+ async listener variant; the legacy blocking
+                        // overload is deprecated on API 33+.
+                        geocoder.getFromLocation(
+                            latitude,
+                            longitude,
+                            1,
+                            object : Geocoder.GeocodeListener {
+                                override fun onGeocode(addresses: MutableList<Address>) {
+                                    continuation.resume(addresses.firstOrNull())
+                                }
 
-                            override fun onError(errorMessage: String?) {
-                                Log.w(TAG, "reverse geocode error: $errorMessage")
-                                continuation.resume(null)
-                            }
-                        },
-                    )
-                }?.toShortAddressOrNull()
+                                override fun onError(errorMessage: String?) {
+                                    Log.w(TAG, "reverse geocode error: $errorMessage")
+                                    continuation.resume(null)
+                                }
+                            },
+                        )
+                    }?.toShortAddressOrNull()
+                } else {
+                    @Suppress("DEPRECATION")
+                    geocoder.getFromLocation(latitude, longitude, 1)
+                        ?.firstOrNull()
+                        ?.toShortAddressOrNull()
+                }
             }.onFailure {
                 if (it is CancellationException) throw it
                 Log.w(TAG, "reverse geocode failed", it)

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -93,6 +94,14 @@ import kotlin.math.roundToInt
  * Provides fast automotive toggles for Wi-Fi, Bluetooth, Airplane mode, Mobile Data,
  * GPS, Hotspot, plus volume and brightness sliders and system settings shortcuts.
  */
+private fun Context.safeStartActivity(intent: Intent) {
+    runCatching {
+        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }.onFailure { e ->
+        Log.w("QuickSettingsPanel", "Failed to start activity for ${intent.action}", e)
+    }
+}
+
 @Composable
 internal fun QuickSettingsPanel(
     systemStatus: SystemStatus,
@@ -198,11 +207,7 @@ internal fun QuickSettingsPanel(
                     icon = Lucide.ExternalLink,
                     description = stringResource(R.string.quick_settings_all_settings),
                     onClick = {
-                        runCatching {
-                            context.startActivity(
-                                Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        }
+                        context.safeStartActivity(Intent(Settings.ACTION_SETTINGS))
                     },
                 )
             }
@@ -236,7 +241,7 @@ internal fun QuickSettingsPanel(
                             }
                         },
                         onOpenSettings = {
-                            context.startActivity(Intent(Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            context.safeStartActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
                         },
                         modifier = Modifier.weight(1f),
                     )
@@ -253,7 +258,7 @@ internal fun QuickSettingsPanel(
                             }
                         },
                         onOpenSettings = {
-                            context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            context.safeStartActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
                         },
                         modifier = Modifier.weight(1f),
                     )
@@ -279,7 +284,7 @@ internal fun QuickSettingsPanel(
                             }
                         },
                         onOpenSettings = {
-                            context.startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            context.safeStartActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS))
                         },
                         modifier = Modifier.weight(1f),
                     )
@@ -296,7 +301,7 @@ internal fun QuickSettingsPanel(
                             }
                         },
                         onOpenSettings = {
-                            context.startActivity(Intent(Settings.ACTION_DATA_ROAMING_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            context.safeStartActivity(Intent(Settings.ACTION_DATA_ROAMING_SETTINGS))
                         },
                         modifier = Modifier.weight(1f),
                     )
@@ -318,13 +323,11 @@ internal fun QuickSettingsPanel(
                                     Intent("android.settings.TETHER_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                                 )
                             }.onFailure {
-                                context.startActivity(
-                                    Intent(Settings.ACTION_WIRELESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                )
+                                context.safeStartActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
                             }
                         },
                         onOpenSettings = {
-                            context.startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            context.safeStartActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
                         },
                         modifier = Modifier.weight(1f),
                     )
@@ -350,9 +353,7 @@ internal fun QuickSettingsPanel(
                             }
                         },
                         onOpenSettings = {
-                            context.startActivity(
-                                Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
+                            context.safeStartActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                         },
                         modifier = Modifier.weight(1f),
                     )
@@ -499,7 +500,7 @@ internal fun QuickSettingsPanel(
                     icon = Lucide.Settings,
                     label = stringResource(R.string.quick_settings_settings),
                     onClick = {
-                        context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        context.safeStartActivity(Intent(Settings.ACTION_SETTINGS))
                     },
                     modifier = Modifier.weight(1f),
                 )

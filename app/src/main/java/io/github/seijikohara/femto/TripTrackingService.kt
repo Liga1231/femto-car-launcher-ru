@@ -153,7 +153,8 @@ internal class TripTrackingService : Service() {
     // minSdk-33 floor), so a denied grant silently skips the refresh while
     // tracking still runs.
     private fun postNotification(notification: Notification) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
             return

@@ -29,6 +29,7 @@ internal data class HomeUiState(
     // because the trip speed reads zero until live GPS fixes set it.
     val updateBadge: Boolean,
     val navigationState: NavigationState = NavigationState.Idle,
+    val isMoving: Boolean = false,
 ) {
     companion object {
         val Initial: HomeUiState =
@@ -42,6 +43,7 @@ internal data class HomeUiState(
                 tripState = TripState.Initial,
                 updateBadge = false,
                 navigationState = NavigationState.Idle,
+                isMoving = false,
             )
     }
 }
