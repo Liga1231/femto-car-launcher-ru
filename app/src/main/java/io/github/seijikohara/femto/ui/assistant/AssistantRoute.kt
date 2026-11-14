@@ -5,7 +5,9 @@ import android.app.Application
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,6 +33,13 @@ internal fun AssistantRoute(
     val viewModel: AssistantViewModel =
         viewModel(factory = AssistantViewModelFactory(context.applicationContext as Application))
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentOnAction by rememberUpdatedState(viewModel::onAction)
+    DisposableEffect(Unit) {
+        onDispose {
+            currentOnAction(AssistantAction.StopListening)
+        }
+    }
+
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) viewModel.onAction(AssistantAction.StartListening)

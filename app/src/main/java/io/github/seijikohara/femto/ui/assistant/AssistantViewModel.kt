@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import io.github.seijikohara.femto.data.common.WhileUiSubscribed
 import io.github.seijikohara.femto.data.voice.VoiceRecognizer
+import io.github.seijikohara.femto.data.voice.VoiceState
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -33,7 +34,12 @@ internal class AssistantViewModel(
 
     fun onAction(action: AssistantAction) {
         when (action) {
-            AssistantAction.StartListening -> recognizer.start()
+            AssistantAction.StartListening -> {
+                if (recognizer.state.value is VoiceState.Failed) {
+                    recognizer.reset()
+                }
+                recognizer.start()
+            }
             AssistantAction.StopListening -> recognizer.stop()
             AssistantAction.Reset -> recognizer.reset()
         }
