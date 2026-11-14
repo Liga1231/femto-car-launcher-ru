@@ -68,6 +68,7 @@ internal sealed interface NavigationState {
         val remainingDistanceMeters: Double,
         val remainingDurationSeconds: Double,
         val etaTimestampMillis: Long,
+        val remainingRouteGeoJson: String = route.routeGeoJson,
     ) : NavigationState {
         val currentStep: NavigationStep?
             get() = route.steps.getOrNull(currentStepIndex)

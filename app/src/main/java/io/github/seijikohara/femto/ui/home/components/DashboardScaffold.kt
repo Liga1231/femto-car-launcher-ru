@@ -553,7 +553,7 @@ private fun DashboardContent(
         attributionBottomInset = attributionBottomInset,
         navigationRouteGeoJson =
             when (val nav = uiState.navigationState) {
-                is NavigationState.Active -> nav.route.routeGeoJson
+                is NavigationState.Active -> nav.remainingRouteGeoJson
                 is NavigationState.RouteSelection -> nav.combinedRouteGeoJson
                 else -> null
             },

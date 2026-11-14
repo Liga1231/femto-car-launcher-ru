@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 private const val TAG = "NavigationManager"
-private const val ARRIVAL_DISTANCE_METERS = 35.0
+private const val ARRIVAL_DISTANCE_METERS = 50.0
 private const val STEP_ADVANCE_DISTANCE_METERS = 35.0
 private const val OFF_ROUTE_DISTANCE_METERS = 75.0
 private const val RECALCULATE_COOLDOWN_MS = 8000L
@@ -39,6 +39,7 @@ internal class NavigationManager(
     private var lastKnownLocation: Location? = null
     private var pendingTarget: PlaceTarget? = null
     private var pendingLabel: String = ""
+    private var lastPassedCoordIndex: Int = 0
 
     fun startNavigation(
         origin: Location?,
@@ -60,6 +61,7 @@ internal class NavigationManager(
         lastKnownLocation = startLoc
         pendingTarget = target
         pendingLabel = destLabel
+        lastPassedCoordIndex = 0
 
         historyStore?.let { store ->
             scope.launch(ioDispatcher) {
@@ -232,21 +234,81 @@ internal class NavigationManager(
         val current = _state.value as? NavigationState.Active ?: return
         val route = current.route
 
-        // 1. Check arrival at final destination
+        // 1. Check arrival at final destination or end of route polyline
         val distanceToDest = computeDistance(
             location.latitude,
             location.longitude,
             route.destination.latitude,
             route.destination.longitude,
         )
-        if (distanceToDest <= ARRIVAL_DISTANCE_METERS) {
+        val lastCoord = route.coordinates.lastOrNull()
+        val distanceToLastCoord = if (lastCoord != null) {
+            computeDistance(
+                location.latitude,
+                location.longitude,
+                lastCoord.first,
+                lastCoord.second,
+            )
+        } else {
+            Double.MAX_VALUE
+        }
+        if (distanceToDest <= ARRIVAL_DISTANCE_METERS || distanceToLastCoord <= ARRIVAL_DISTANCE_METERS) {
             pendingTarget = null
             pendingLabel = ""
+            lastPassedCoordIndex = 0
             _state.value = NavigationState.Arrived(route.destinationLabel)
             return
         }
 
-        // 2. Check if we reached/passed the current maneuver step
+        // 2. Track vehicle progress along route polyline and slice coordinates behind vehicle
+        val coordinates = route.coordinates
+        val remainingGeoJson = if (coordinates.size >= 2) {
+            val searchStart = maxOf(0, lastPassedCoordIndex - 1)
+            val searchEnd = minOf(coordinates.size - 2, lastPassedCoordIndex + 25)
+            var bestIndex = lastPassedCoordIndex
+            var minDistance = Double.MAX_VALUE
+            var bestProjLat = location.latitude
+            var bestProjLon = location.longitude
+
+            for (i in searchStart..searchEnd) {
+                val a = coordinates[i]
+                val b = coordinates[i + 1]
+                val proj = projectToSegment(
+                    location.latitude,
+                    location.longitude,
+                    a.first,
+                    a.second,
+                    b.first,
+                    b.second,
+                )
+                if (proj.distanceMeters < minDistance) {
+                    minDistance = proj.distanceMeters
+                    bestIndex = i
+                    bestProjLat = proj.projLat
+                    bestProjLon = proj.projLon
+                }
+            }
+
+            if (bestIndex > lastPassedCoordIndex && minDistance <= OFF_ROUTE_DISTANCE_METERS) {
+                lastPassedCoordIndex = bestIndex
+            }
+
+            val remainingCoords = ArrayList<Pair<Double, Double>>(coordinates.size - bestIndex + 1)
+            remainingCoords.add(Pair(bestProjLat, bestProjLon))
+            for (i in (bestIndex + 1) until coordinates.size) {
+                remainingCoords.add(coordinates[i])
+            }
+
+            if (remainingCoords.size >= 2) {
+                buildGeoJsonLineString(remainingCoords)
+            } else {
+                route.routeGeoJson
+            }
+        } else {
+            route.routeGeoJson
+        }
+
+        // 3. Check if we reached/passed the current maneuver step
         var stepIndex = current.currentStepIndex
         val currentStep = route.steps.getOrNull(stepIndex)
         var distanceToStep = if (currentStep != null) {
@@ -301,8 +363,13 @@ internal class NavigationManager(
             }
         }
 
-        // 3. Off-route detection (point-to-segment distance to polyline)
-        val minDistanceToRoute = minDistanceToPolyline(location, route.coordinates)
+        // 4. Off-route detection (point-to-segment distance to remaining route)
+        val remainingCoordsForCheck = if (lastPassedCoordIndex < route.coordinates.size) {
+            route.coordinates.drop(lastPassedCoordIndex)
+        } else {
+            route.coordinates
+        }
+        val minDistanceToRoute = minDistanceToPolyline(location, remainingCoordsForCheck)
 
         val nowMs = SystemClock.elapsedRealtime()
         if (minDistanceToRoute > OFF_ROUTE_DISTANCE_METERS &&
@@ -313,7 +380,7 @@ internal class NavigationManager(
             return
         }
 
-        // 4. Update progress and ETA (distance to upcoming maneuver + all remaining steps)
+        // 5. Update progress and ETA (distance to upcoming maneuver + all remaining steps)
         val remainingStepsDistance = distanceToStep + route.steps
             .drop(stepIndex)
             .sumOf { it.distanceMeters }
@@ -333,6 +400,7 @@ internal class NavigationManager(
             remainingDistanceMeters = remainingStepsDistance,
             remainingDurationSeconds = remainingDuration,
             etaTimestampMillis = eta,
+            remainingRouteGeoJson = remainingGeoJson,
         )
     }
 
@@ -416,6 +484,7 @@ internal class NavigationManager(
 
                     val now = System.currentTimeMillis()
                     val eta = now + (newRoute.totalDurationSeconds * 1000).toLong()
+                    lastPassedCoordIndex = 0
 
                     _state.value = NavigationState.Active(
                         route = newRoute,
@@ -438,6 +507,7 @@ internal class NavigationManager(
         currentRouteJob = null
         pendingTarget = null
         pendingLabel = ""
+        lastPassedCoordIndex = 0
         _state.value = NavigationState.Idle
     }
 
@@ -497,6 +567,36 @@ internal class NavigationManager(
         return minDistance
     }
 
+    private data class ProjectionResult(
+        val distanceMeters: Double,
+        val projLat: Double,
+        val projLon: Double,
+        val t: Double,
+    )
+
+    private fun projectToSegment(
+        pLat: Double,
+        pLon: Double,
+        aLat: Double,
+        aLon: Double,
+        bLat: Double,
+        bLon: Double,
+    ): ProjectionResult {
+        val cosLat = Math.cos(Math.toRadians((aLat + bLat) / 2.0))
+        val dx = (bLon - aLon) * cosLat
+        val dy = bLat - aLat
+        val lenSq = dx * dx + dy * dy
+        if (lenSq < 1e-12) {
+            val dist = computeDistance(pLat, pLon, aLat, aLon)
+            return ProjectionResult(dist, aLat, aLon, 0.0)
+        }
+        val t = (((pLon - aLon) * cosLat * dx + (pLat - aLat) * dy) / lenSq).coerceIn(0.0, 1.0)
+        val projLat = aLat + t * (bLat - aLat)
+        val projLon = aLon + t * (bLon - aLon)
+        val dist = computeDistance(pLat, pLon, projLat, projLon)
+        return ProjectionResult(dist, projLat, projLon, t)
+    }
+
     private fun distanceToSegmentMeters(
         pLat: Double,
         pLon: Double,
@@ -504,17 +604,17 @@ internal class NavigationManager(
         aLon: Double,
         bLat: Double,
         bLon: Double,
-    ): Double {
-        val cosLat = Math.cos(Math.toRadians((aLat + bLat) / 2.0))
-        val dx = (bLon - aLon) * cosLat
-        val dy = bLat - aLat
-        val lenSq = dx * dx + dy * dy
-        if (lenSq < 1e-12) {
-            return computeDistance(pLat, pLon, aLat, aLon)
+    ): Double = projectToSegment(pLat, pLon, aLat, aLon, bLat, bLon).distanceMeters
+
+    private fun buildGeoJsonLineString(coords: List<Pair<Double, Double>>): String {
+        val sb = StringBuilder(coords.size * 32 + 128)
+        sb.append("{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"LineString\",\"coordinates\":[")
+        for (i in coords.indices) {
+            if (i > 0) sb.append(',')
+            val pt = coords[i]
+            sb.append('[').append(pt.second).append(',').append(pt.first).append(']')
         }
-        val t = (((pLon - aLon) * cosLat * dx + (pLat - aLat) * dy) / lenSq).coerceIn(0.0, 1.0)
-        val projLat = aLat + t * (bLat - aLat)
-        val projLon = aLon + t * (bLon - aLon)
-        return computeDistance(pLat, pLon, projLat, projLon)
+        sb.append("]},\"properties\":{\"selected\":true,\"routeIndex\":0}}]}")
+        return sb.toString()
     }
 }
